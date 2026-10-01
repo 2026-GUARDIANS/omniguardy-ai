@@ -1,35 +1,35 @@
-# Python 가상환경
+
 venv/
 env/
 .venv/
 
-# Python 캐시
+
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# 모델 파일 (핵심 - 용량 큼). 런타임 config만 Git으로 관리합니다.
+
 models/*
 !models/*.config.json
 *.keras
 *.h5
 
-# Jupyter Notebook
+
 .ipynb_checkpoints/
 
-# 캐시 파일
+
 .cache/
 *.cache
 
-# OS 파일
+
 .DS_Store
 Thumbs.db
 
-# logs (선택)
+
 logs/
 *.log
 
-# 원본 오디오 데이터와 실험 산출물
 data/
 results/
+ESC-50/
