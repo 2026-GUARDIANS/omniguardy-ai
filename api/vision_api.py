@@ -388,8 +388,6 @@ def _video_metadata(video_path: Path, file_name: str) -> dict[str, Any]:
     capture = cv2.VideoCapture(str(video_path))
     fps = capture.get(cv2.CAP_PROP_FPS) or 0.0
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
     capture.release()
     if fps <= 0 or frame_count <= 0:
         raise ValueError("Invalid MP4 metadata.")
@@ -398,9 +396,16 @@ def _video_metadata(video_path: Path, file_name: str) -> dict[str, Any]:
         "durationSeconds": round(frame_count / fps, 3),
         "fps": round(fps, 3),
         "frameCount": frame_count,
-        "width": width,
-        "height": height,
     }
+
+
+def _frame_dimensions(video_path: Path) -> tuple[int, int]:
+    """Read dimensions for internal ROI conversion; never expose them in the API DTO."""
+    capture = cv2.VideoCapture(str(video_path))
+    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    capture.release()
+    return width, height
 
 
 @app.post("/analyze/vision")
@@ -467,8 +472,9 @@ async def analyze_vision(
             # 실험적 흉기 근접 감지도 같은 person tracking 결과를 공유해서 쓴다.
             tracking = service._tracking_features(temporary_path)
             # 정규화 ROI를 실제 프레임 좌표로 바꾸기 위한 원본 크기다.
-            tracking.attrs["frame_width"] = video["width"]
-            tracking.attrs["frame_height"] = video["height"]
+            frame_width, frame_height = _frame_dimensions(temporary_path)
+            tracking.attrs["frame_width"] = frame_width
+            tracking.attrs["frame_height"] = frame_height
 
             observations["hasPose"] = signal.hand_present_frames > 0
             observations["hasTracking"] = not tracking.empty

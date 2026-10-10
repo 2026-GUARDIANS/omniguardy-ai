@@ -44,9 +44,7 @@ Trial 6의 내부 분류 클래스는 `N1`, `A17`, `A18_20`, `A19`, `A21`이다.
       "fileName": "string",
       "durationSeconds": 0.0,
       "fps": 0.0,
-      "frameCount": 0,
-      "width": 0,
-      "height": 0
+      "frameCount": 0
     },
     "behavior": "AUDIO object or null",
     "visionEvents": [],
@@ -106,7 +104,7 @@ MEDIUM 판정은 AUDIO의 `behavior.prediction = "A18"`에 따른다. 키패드 
   "result": {
     "trigger": {"triggerId": "trg-audio-001", "triggerType": "AUDIO", "securityEventId": "sec-001", "triggeredAt": "2026-09-23T15:30:00+09:00"},
     "analyzedAt": "2026-09-23T15:30:10+09:00",
-    "video": {"fileName": "door_video.mp4", "durationSeconds": 10.0, "fps": 30.0, "frameCount": 300, "width": 1920, "height": 1080},
+    "video": {"fileName": "door_video.mp4", "durationSeconds": 10.0, "fps": 30.0, "frameCount": 300},
     "behavior": {"prediction": "A21", "label": "long_or_repeated_door_knocking", "confidence": 0.94, "classProbabilities": {"N1": 0.03, "A17": 0.01, "A18": 0.02, "A19": 0.00, "A20": 0.0, "A21": 0.94}},
     "visionEvents": [],
     "observations": {"trackedPersonCount": 1, "hasTracking": true, "hasPose": true}
@@ -122,7 +120,7 @@ MEDIUM 판정은 AUDIO의 `behavior.prediction = "A18"`에 따른다. 키패드 
   "result": {
     "trigger": {"triggerId": "trg-audio-002", "triggerType": "AUDIO", "securityEventId": "sec-002", "triggeredAt": "2026-09-23T15:33:00+09:00"},
     "analyzedAt": "2026-09-23T15:33:10+09:00",
-    "video": {"fileName": "door_video_02.mp4", "durationSeconds": 10.0, "fps": 30.0, "frameCount": 300, "width": 1920, "height": 1080},
+    "video": {"fileName": "door_video_02.mp4", "durationSeconds": 10.0, "fps": 30.0, "frameCount": 300},
     "behavior": {"prediction": "A18", "label": "door_lock_suspicious_activity", "confidence": 0.85, "classProbabilities": {"N1": 0.05, "A17": 0.03, "A18": 0.85, "A19": 0.01, "A20": 0.0, "A21": 0.06}},
     "visionEvents": [],
     "observations": {"trackedPersonCount": 1, "hasTracking": true, "hasPose": true}
@@ -151,7 +149,7 @@ KEYPAD는 `behavior: null`이며 규칙 기반 `visionEvents`를 반환한다. �
   "result": {
     "trigger": {"triggerId": "trg-keypad-001", "triggerType": "KEYPAD", "securityEventId": null, "triggeredAt": "2026-09-23T15:31:00+09:00"},
     "analyzedAt": "2026-09-23T15:31:08+09:00",
-    "video": {"fileName": "keypad_window.mp4", "durationSeconds": 8.0, "fps": 30.0, "frameCount": 240, "width": 1920, "height": 1080},
+    "video": {"fileName": "keypad_window.mp4", "durationSeconds": 8.0, "fps": 30.0, "frameCount": 240},
     "behavior": null,
     "visionEvents": [{"eventType": "SILENT_SIGNAL", "confidence": 0.94, "detectedFrame": 156, "details": {"signalCode": "S1", "signalName": "emergency_hand_gesture"}}],
     "observations": {"trackedPersonCount": 2, "hasTracking": true, "hasPose": true}
