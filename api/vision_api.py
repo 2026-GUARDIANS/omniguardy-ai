@@ -16,6 +16,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+import time
 from typing import Any, Literal
 
 import cv2
@@ -40,6 +41,8 @@ from tracking.keypad_rules import (
     detect_rear_approach,
     detect_weapon_proximity,
 )
+from tracking.hand_keypad_rules import Roi, HandRuleConfig, RepeatedHandApproach
+from serving.temporal_inference import TemporalInference
 
 # hand_motion_desktop/src는 gesture_rules.py/model_loader.py를 상대 import가 아니라
 # 최상위 모듈처럼(from gesture_rules import ...) 작성해뒀기 때문에, 패키지로 import하지
@@ -60,10 +63,30 @@ LABEL_DETAILS = {
     "N1": "normal_entrance_activity",
     "A17": "repeated_doorbell_press",
     "A18": "repeated_door_opening_attempt",
+    "A18_20": "repeated_door_opening_attempt_or_looking_inside",
     "A19": "repeated_door_kicking",
     "A20": "attempting_to_look_inside",
     "A21": "long_or_repeated_door_knocking",
 }
+
+
+def temporal_response_contract(model_label: str, model_probabilities: dict[str, float]) -> tuple[str, str, dict[str, float]]:
+    """Translate only the frozen temporal model's merged A18_20 class to API wire values.
+
+    Keep this compatibility decision in one place.  XGBoost predictions bypass
+    this function entirely, so its established response remains unchanged.
+    """
+    probabilities = {
+        "N1": model_probabilities["N1"],
+        "A17": model_probabilities["A17"],
+        "A18": model_probabilities["A18_20"],
+        "A19": model_probabilities["A19"],
+        "A20": 0.0,
+        "A21": model_probabilities["A21"],
+    }
+    if model_label == "A18_20":
+        return "A18", "door_lock_suspicious_activity", probabilities
+    return model_label, LABEL_DETAILS[model_label], probabilities
 # REAR_CLOSE_APPROACH_SUSPECTED / WEAPON_PROXIMITY_SUSPECTED(실험적) 판정 로직과
 # 그 임계값들은 tracking/keypad_rules.py에 있다 (학습이 필요 없는 순수 규칙 기반이라
 # 모델 로딩 담당인 InferenceService와는 분리해뒀다).
@@ -86,14 +109,31 @@ class KeypadTriggerRequest(BaseModel):
 _recent_keypad_triggers: deque[dict] = deque(maxlen=100)
 
 
+def normalize_security_event_id(value: str | None) -> str | None:
+    """Normalize absent security-event IDs consistently across trigger types."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized or normalized.casefold() in {"null", "none"}:
+        return None
+    return normalized
+
+
 class InferenceService:
-    def __init__(self) -> None:
+    def __init__(self, model_choice: str | None = None) -> None:
+        self.model_choice = model_choice or os.getenv("VISION_MODEL", "xgboost")
+        if self.model_choice not in {"xgboost", "temporal_trial6", "temporal_trial6_scaleaug", "temporal_img"}:
+            raise ValueError("VISION_MODEL must be xgboost, temporal_trial6, temporal_trial6_scaleaug, or temporal_img")
         if not MODEL_BUNDLE_PATH.is_file() or not YOLO_PATH.is_file() or not POSE_PATH.is_file():
             raise FileNotFoundError("Vision inference model file is missing.")
-        bundle = joblib.load(MODEL_BUNDLE_PATH)
-        self.classifier = bundle["model"]
-        self.encoder = bundle["label_encoder"]
-        self.feature_columns = bundle["feature_columns"]
+        self.temporal = None
+        if self.model_choice == "xgboost":
+            bundle = joblib.load(MODEL_BUNDLE_PATH)
+            self.classifier = bundle["model"]
+            self.encoder = bundle["label_encoder"]
+            self.feature_columns = bundle["feature_columns"]
+        else:
+            self.temporal = TemporalInference(self.model_choice)
         self.yolo = YOLO(str(YOLO_PATH))
         # vid_stride는 절대 1보다 크게 쓰지 않는다. BoT-SORT는 상태를 유지하는
         # tracker라 프레임을 건너뛰면 track이 끊기거나 ID가 바뀌어서, 학습 시
@@ -133,6 +173,7 @@ class InferenceService:
                 rows.append({
                     "frame": frame_idx * self.yolo_vid_stride, "track_id": int(box.id[0]),
                     "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2),
+                    "confidence": float(box.conf[0]),
                 })
         return pd.DataFrame(rows)
 
@@ -192,6 +233,31 @@ class InferenceService:
             capture.release()
         return pd.DataFrame(rows)
 
+    def _keypad_hand_rule(self, video_path: Path) -> dict[str, Any] | None:
+        """Best-effort AUDIO-only diagnostic; intentionally not part of response."""
+        roi = Roi.parse(os.getenv("VISION_KEYPAD_HAND_ROI"))
+        if roi is None: return None
+        cfg = HandRuleConfig.env(); detector = RepeatedHandApproach(roi, cfg)
+        cap=cv2.VideoCapture(str(video_path)); fps=cap.get(cv2.CAP_PROP_FPS) or 0.
+        if not cap.isOpened() or fps<=0: cap.release(); return None
+        options=vision.PoseLandmarkerOptions(base_options=mp.tasks.BaseOptions(model_asset_path=str(POSE_PATH)),running_mode=vision.RunningMode.VIDEO,num_poses=2,min_pose_detection_confidence=.5,min_tracking_confidence=.5)
+        frame=-1
+        try:
+            with vision.PoseLandmarker.create_from_options(options) as landmarker:
+                while True:
+                    ok,image=cap.read()
+                    if not ok: break
+                    frame+=1
+                    if frame % FRAME_INTERVAL: continue
+                    result=landmarker.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB,data=cv2.cvtColor(image,cv2.COLOR_BGR2RGB)),int(frame/fps*1000))
+                    for i,landmarks in enumerate(result.pose_landmarks):
+                        wrists=[]
+                        for index in (15,16):
+                            point=landmarks[index]; wrists.append((point.x,point.y,float(getattr(point,'visibility',0.))))
+                        detector.observe(i,frame,frame/fps,wrists)
+        finally: cap.release()
+        return detector.event()
+
     def analyze(self, video_path: Path) -> dict[str, Any]:
         capture = cv2.VideoCapture(str(video_path))
         fps = capture.get(cv2.CAP_PROP_FPS) or 0.0
@@ -200,23 +266,41 @@ class InferenceService:
         capture.release()
         if fps <= 0 or frame_count <= 0:
             raise ValueError("Invalid MP4 metadata.")
-        tracking, pose = self._tracking_features(video_path), self._pose_features(video_path)
+        started = time.perf_counter()
+        tracking = self._tracking_features(video_path)
+        tracking_seconds = time.perf_counter() - started
+        started = time.perf_counter()
+        pose = self._pose_features(video_path)
+        pose_seconds = time.perf_counter() - started
         behavior = summarize_block(tracking) if {"frame", "track_id", "x1", "y1", "x2", "y2"}.issubset(tracking.columns) else {"has_tracking": 0, "tracked_person_count": 0}
         pose_values = pose_summary(pose, 0, frame_count - 1) if {"frame", *POSE_COLUMNS}.issubset(pose.columns) else {"has_pose": 0, "pose_frame_count": 0}
-        features = pd.DataFrame([{**behavior, **pose_values}])
-        for column in self.feature_columns:
-            if column not in features:
-                features[column] = 0.0
-        probabilities = self.classifier.predict_proba(features[self.feature_columns])[0]
-        prediction_id = int(np.argmax(probabilities))
-        label = str(self.encoder.inverse_transform([prediction_id])[0])
-        probability_map = {name: round(float(value), 6) for name, value in zip(self.encoder.classes_, probabilities)}
+        if self.model_choice == "xgboost":
+            features = pd.DataFrame([{**behavior, **pose_values}])
+            for column in self.feature_columns:
+                if column not in features:
+                    features[column] = 0.0
+            started = time.perf_counter()
+            probabilities = self.classifier.predict_proba(features[self.feature_columns])[0]
+            model_seconds = time.perf_counter() - started
+            prediction_id = int(np.argmax(probabilities))
+            label = str(self.encoder.inverse_transform([prediction_id])[0])
+            probability_map = {name: round(float(value), 6) for name, value in zip(self.encoder.classes_, probabilities)}
+            image_seconds = 0.0
+        else:
+            assert self.temporal is not None
+            model_probability_map, temporal_times = self.temporal.predict(video_path, tracking, pose, frame_count)
+            model_label = max(model_probability_map, key=model_probability_map.get)
+            label, event, probability_map = temporal_response_contract(model_label, model_probability_map)
+            probability_map = {name: round(value, 6) for name, value in probability_map.items()}
+            model_seconds = temporal_times["model"]
+            image_seconds = temporal_times.get("image_embedding", 0.0)
+        print(f"[vision_api] model={self.model_choice} tracking={tracking_seconds:.3f}s pose={pose_seconds:.3f}s image_embedding={image_seconds:.3f}s model={model_seconds:.3f}s")
         duration = frame_count / fps
         warnings = []
         if not 5 <= duration <= 10.5:
             warnings.append("Expected a 5-10 second video; this result is outside the trained input duration.")
         return {
-            "prediction": label, "event": LABEL_DETAILS[label],
+            "prediction": label, "event": LABEL_DETAILS[label] if self.model_choice == "xgboost" else event,
             "confidence": probability_map[label], "classProbabilities": probability_map,
             "videoMetadata": {"durationSeconds": round(duration, 3), "fps": round(fps, 3), "frameCount": frame_count, "width": width, "height": height},
             "featureAvailability": {"hasTracking": bool(behavior["has_tracking"]), "hasPose": bool(pose_values["has_pose"])},
@@ -241,7 +325,7 @@ app = FastAPI(title="Vision Inference API", lifespan=lifespan)
 def health() -> dict[str, str]:
     return {
         "status": "ok",
-        "model": "xgboost_fixed_10s",
+        "model": os.getenv("VISION_MODEL", "xgboost"),
         "videoInferenceLoaded": str(app.state.service is not None).lower(),
     }
 
@@ -251,6 +335,7 @@ def receive_keypad_trigger(payload: KeypadTriggerRequest) -> dict:
     """Accept a keypad trigger without requiring a webcam or Raspberry Pi."""
 
     trigger = payload.model_dump(mode="json")
+    trigger["securityEventId"] = normalize_security_event_id(payload.securityEventId)
     _recent_keypad_triggers.append(trigger)
     return {
         "status": "accepted",
@@ -302,6 +387,7 @@ async def analyze_vision(
     if not (file.filename or "").lower().endswith(".mp4"):
         raise HTTPException(status_code=415, detail="Only .mp4 files are supported.")
 
+    securityEventId = normalize_security_event_id(securityEventId)
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temporary_file:
@@ -320,6 +406,12 @@ async def analyze_vision(
             if app.state.service is None:
                 app.state.service = InferenceService()
             analysis = app.state.service.analyze(temporary_path)
+            if os.getenv("VISION_KEYPAD_HAND_RULE", "0") == "1":
+                try:
+                    hand_event = app.state.service._keypad_hand_rule(temporary_path)
+                    if hand_event: print(f"[vision_api] internal keypad-hand diagnostic={hand_event}")
+                except Exception as error:
+                    print(f"[vision_api] keypad-hand diagnostic failed: {error}")
             behavior = {
                 "prediction": analysis["prediction"],
                 "label": analysis["event"],

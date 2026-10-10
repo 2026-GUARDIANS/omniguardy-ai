@@ -34,7 +34,8 @@ MIN_FIST_FRAMES = 5
 MAX_TRANSITION_GAP_FRAMES = 15
 
 # 몇 번 연속으로 주먹 쥐었다 펴야 확정할지, 반복 사이 최대 허용 간격(프레임)
-REQUIRED_REPEATS = 2
+# Demo policy: one valid fist -> open_palm transition is sufficient.
+REQUIRED_REPEATS = 1
 MAX_GAP_BETWEEN_REPS_FRAMES = 45
 
 
