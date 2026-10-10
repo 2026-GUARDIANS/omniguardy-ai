@@ -42,6 +42,7 @@ from tracking.keypad_rules import (
     detect_weapon_proximity,
 )
 from tracking.hand_keypad_rules import Roi, HandRuleConfig, RepeatedHandApproach
+from tracking.handle_roi_rules import HandleRuleConfig as HandleRoiRuleConfig, analyze_handle_motion, apply_a18_override
 from serving.temporal_inference import TemporalInference
 
 # hand_motion_desktop/src는 gesture_rules.py/model_loader.py를 상대 import가 아니라
@@ -294,12 +295,40 @@ class InferenceService:
             probability_map = {name: round(value, 6) for name, value in probability_map.items()}
             model_seconds = temporal_times["model"]
             image_seconds = temporal_times.get("image_embedding", 0.0)
-        print(f"[vision_api] model={self.model_choice} tracking={tracking_seconds:.3f}s pose={pose_seconds:.3f}s image_embedding={image_seconds:.3f}s model={model_seconds:.3f}s")
+        handle_rule_seconds = 0.0
+        # Landmark coordinates are intentionally absent from _pose_features(): changing
+        # that public feature output would risk altering the frozen Trial 6 input.
+        # Run this additional pass only for the enabled Trial 6 A17/A18 candidates.
+        if self.model_choice == "temporal_trial6" and label in {"A17", "A18"}:
+            handle_config = HandleRoiRuleConfig.from_environment()
+            if handle_config is not None:
+                try:
+                    started = time.perf_counter()
+                    handle_result = analyze_handle_motion(video_path, POSE_PATH, FRAME_INTERVAL, handle_config)
+                    handle_rule_seconds = time.perf_counter() - started
+                    label, event, probability_map, overridden = apply_a18_override(
+                        label, event, probability_map, handle_result,
+                    )
+                    print(
+                        "[vision_api] handle-rule "
+                        f"detected={handle_result.detected} overridden={overridden} "
+                        f"roi_samples={handle_result.roi_samples} "
+                        f"max_consecutive={handle_result.max_consecutive_samples} "
+                        f"angle_range={handle_result.elbow_angle_range:.3f} "
+                        f"path_length={handle_result.wrist_path_length:.4f}"
+                    )
+                except Exception as error:
+                    # Rule failure must never replace a successful model prediction.
+                    print(f"[vision_api] WARNING: handle rule failed; retaining model result: {error}")
+        print(f"[vision_api] model={self.model_choice} tracking={tracking_seconds:.3f}s pose={pose_seconds:.3f}s image_embedding={image_seconds:.3f}s model={model_seconds:.3f}s handle_rule={handle_rule_seconds:.3f}s")
         duration = frame_count / fps
         warnings = []
         if not 5 <= duration <= 10.5:
             warnings.append("Expected a 5-10 second video; this result is outside the trained input duration.")
         return {
+            # A17→A18 uses swapped existing scores, so prediction, confidence and
+            # classProbabilities remain coherent. These are rule-adjusted scores,
+            # not pure Temporal model probabilities, when the override fires.
             "prediction": label, "event": LABEL_DETAILS[label] if self.model_choice == "xgboost" else event,
             "confidence": probability_map[label], "classProbabilities": probability_map,
             "videoMetadata": {"durationSeconds": round(duration, 3), "fps": round(fps, 3), "frameCount": frame_count, "width": width, "height": height},
