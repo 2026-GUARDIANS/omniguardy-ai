@@ -1,5 +1,5 @@
 {
-  "model_path": "../models/door_event_model.keras",
+  "model_path": "../models/door_event_model_v3.keras",
   "pipeline": "door_event",
   "sample_rate": 22050,
   "labels": {
@@ -8,10 +8,10 @@
     "handle": 2
   },
   "thresholds": {
-    "knock": 0.7,
-    "handle": 0.7
+    "knock": 0.995,
+    "handle": 0.90
   },
   "window_seconds": 1.0,
   "hop_seconds": 0.2,
-  "cooldown_seconds": 1.0
+  "cooldown_seconds": 0.0
 }
