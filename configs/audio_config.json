@@ -11,7 +11,8 @@
     "knock": 0.7,
     "handle": 0.7
   },
-  "window_seconds": 1.0,
+  "window_seconds": 1,
   "hop_seconds": 0.2,
-  "cooldown_seconds": 1.0
+  "cooldown_seconds": 1,
+  "knock_min_consecutive_windows": 2
 }
