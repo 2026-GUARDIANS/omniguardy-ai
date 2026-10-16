@@ -110,7 +110,9 @@ def identify_operator_by_roi(
     return min(candidates)[3] if candidates else None
 
 
-def detect_rear_approach(tracking: pd.DataFrame, fps: float) -> dict[str, Any] | None:
+def detect_rear_approach(
+    tracking: pd.DataFrame, fps: float, operator_id: int | None = None,
+) -> dict[str, Any] | None:
     """규칙 기반 REAR_CLOSE_APPROACH_SUSPECTED 판정.
 
     tracking: InferenceService._tracking_features()가 반환하는 형태
@@ -128,10 +130,11 @@ def detect_rear_approach(tracking: pd.DataFrame, fps: float) -> dict[str, Any] |
         return None  # 사람이 한 명뿐이면 후방 접근 자체가 성립하지 않음
 
     first_seen = {track_id: int(group["frame"].iloc[0]) for track_id, group in tracks.items()}
-    roi = load_keypad_roi()
-    # ROI 설정/겹침이 없으면 이전의 첫 등장 track 휴리스틱을 그대로 쓴다.
-    operator_id = identify_operator_by_roi(tracking, roi, fps) if roi else None
-    operator_id = operator_id if operator_id is not None else min(first_seen, key=first_seen.get)
+    if operator_id not in tracks:
+        roi = load_keypad_roi()
+        # ROI 설정/겹침이 없으면 이전의 첫 등장 track 휴리스틱을 그대로 쓴다.
+        operator_id = identify_operator_by_roi(tracking, roi, fps) if roi else None
+        operator_id = operator_id if operator_id is not None else min(first_seen, key=first_seen.get)
     operator = tracks[operator_id]
     operator_first_frame = first_seen[operator_id]
     min_delay_frames = REAR_APPROACH_MIN_DELAY_SECONDS * fps

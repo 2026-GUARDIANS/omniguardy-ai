@@ -41,6 +41,7 @@ from tracking.keypad_rules import (
     detect_rear_approach,
     detect_weapon_proximity,
 )
+from tracking.keypad_rules_front import detect_front_rear_approach
 from tracking.hand_keypad_rules import Roi, HandRuleConfig, RepeatedHandApproach
 from tracking.handle_roi_rules import HandleRuleConfig as HandleRoiRuleConfig, analyze_handle_motion, apply_a18_override
 from serving.temporal_inference import TemporalInference
@@ -53,6 +54,7 @@ if str(HAND_MOTION_SRC) not in sys.path:
     sys.path.insert(0, str(HAND_MOTION_SRC))
 
 from detector import analyze_video_for_silent_signal  # noqa: E402  (경로 삽입 후 import)
+from detector_front import analyze_video_for_silent_signal_front  # noqa: E402
 
 
 MODEL_BUNDLE_PATH = PROJECT_ROOT / "results/evaluation/fixed_10s_model/xgboost_fixed_10s.pkl"
@@ -69,6 +71,32 @@ LABEL_DETAILS = {
     "A20": "attempting_to_look_inside",
     "A21": "long_or_repeated_door_knocking",
 }
+
+
+def analyze_silent_signal(video_path: Path):
+    """Choose the legacy or front-camera coordinate convention explicitly."""
+    coordinate_mode = os.getenv("SILENT_SIGNAL_COORDINATE_MODE", "legacy").strip().lower()
+    if coordinate_mode == "front":
+        return analyze_video_for_silent_signal_front(video_path)
+    if coordinate_mode not in {"legacy", ""}:
+        print(
+            "[vision_api] WARNING: "
+            f"SILENT_SIGNAL_COORDINATE_MODE={coordinate_mode!r} is invalid; using legacy"
+        )
+    return analyze_video_for_silent_signal(video_path)
+
+
+def analyze_rear_approach(tracking: pd.DataFrame, fps: float):
+    """Use the foreground operator lock only when explicitly requested."""
+    camera_mode = os.getenv("REAR_APPROACH_CAMERA_MODE", "legacy").strip().lower()
+    if camera_mode == "front":
+        return detect_front_rear_approach(tracking, fps)
+    if camera_mode not in {"legacy", ""}:
+        print(
+            "[vision_api] WARNING: "
+            f"REAR_APPROACH_CAMERA_MODE={camera_mode!r} is invalid; using legacy"
+        )
+    return detect_rear_approach(tracking, fps)
 
 
 def temporal_response_contract(model_label: str, model_probabilities: dict[str, float]) -> tuple[str, str, dict[str, float]]:
@@ -467,7 +495,7 @@ async def analyze_vision(
                 app.state.service = InferenceService()
             service = app.state.service
 
-            signal = analyze_video_for_silent_signal(temporary_path)
+            signal = analyze_silent_signal(temporary_path)
             # SILENT_SIGNAL(손동작)뿐 아니라 REAR_CLOSE_APPROACH_SUSPECTED(후방 접근)와
             # 실험적 흉기 근접 감지도 같은 person tracking 결과를 공유해서 쓴다.
             tracking = service._tracking_features(temporary_path)
@@ -493,7 +521,7 @@ async def analyze_vision(
                     },
                 })
 
-            rear_approach_event = detect_rear_approach(tracking, video["fps"])
+            rear_approach_event = analyze_rear_approach(tracking, video["fps"])
             if rear_approach_event is not None:
                 vision_events.append(rear_approach_event)
 
