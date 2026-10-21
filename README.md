@@ -76,6 +76,37 @@ AIHub VL/VS hold-out validation 기준:
 
 N1 비중이 높으므로 Accuracy만이 아니라 Macro F1-score를 함께 평가합니다. 이 결과는 validation 성능이며, 최종 일반화 성능은 전시 카메라 또는 별도 현장 test 영상으로 추가 검증해야 합니다.
 
+## 전시 Vision FastAPI
+
+`POST /analyze/vision`은 `multipart/form-data`로 MP4와 트리거 메타데이터를 받습니다. Vision은 관찰 이벤트 또는 기존 행동 분류 결과만 반환하며, LOW/MEDIUM/HIGH 위험도 결정은 Agent의 역할입니다.
+
+| `triggerType` | 기본 처리 |
+|---|---|
+| `AUDIO` | `exhibition_rules`: 사람 누적 관찰 및 카메라 가림 규칙 |
+| `KEYPAD` | 기존 `SILENT_SIGNAL`, `REAR_CLOSE_APPROACH_SUSPECTED` 규칙 |
+
+`VISION_AUDIO_MODE`는 AUDIO 경로에만 적용됩니다. 미설정 또는 `exhibition_rules`면 전시 규칙을 실행하고, `temporal_trial6`을 명시하면 보존된 Temporal Trial 6 행동 분류 모델을 실행합니다. KEYPAD 경로는 이 설정과 무관하게 기존 규칙을 유지합니다.
+
+```powershell
+# 전시 기본 모드 (VISION_AUDIO_MODE 미설정과 동일)
+$env:VISION_AUDIO_MODE = "exhibition_rules"
+.\.venv\Scripts\python.exe .\api\vision_api.py
+
+# 기존 Trial 6 백업 모드
+$env:VISION_AUDIO_MODE = "temporal_trial6"
+$env:VISION_MODEL = "temporal_trial6"
+.\.venv\Scripts\python.exe .\api\vision_api.py
+```
+
+전시 규칙 AUDIO 응답은 `behavior: null`이며, `visionEvents`에 다음 관찰 이벤트를 반환합니다.
+
+| 이벤트 | 판정 개요 |
+|---|---|
+| `PERSON_DWELL_OBSERVED` | 같은 BoT-SORT Track ID가 누적 5초 이상 관찰됨 |
+| `CAMERA_OCCLUSION_SUSPECTED` | 첫 10초 안에서 저 edge density·저 Laplacian 상태가 0.3초 이상 지속됨 |
+
+이 모드의 `observations`에는 선택 필드 `analysisMode: "exhibition_rules"`가 포함됩니다. `temporal_trial6`과 KEYPAD 기존 응답에는 이 필드를 추가하지 않습니다. 상세 API 요청·응답 계약은 `api/vision_api.py` 구현을 기준으로 관리합니다.
+
 ## Git 관리
 
 원본·증강 영상, 실행 결과, 자동 생성 manifest, 모델 가중치는 `.gitignore`로 제외합니다. 코드와 재현에 필요한 설정 파일만 Git으로 관리합니다.
