@@ -37,3 +37,7 @@ field_test/
 *.mp4
 *.pt
 *.onnx
+
+# final_demo 원본과 실행·검증 산출물 (소스 모듈은 추적)
+final_demo/videos/
+final_demo/results_front_rules/

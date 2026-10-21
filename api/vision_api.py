@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
+import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -53,8 +55,15 @@ HAND_MOTION_SRC = PROJECT_ROOT / "hand_motion_desktop" / "src"
 if str(HAND_MOTION_SRC) not in sys.path:
     sys.path.insert(0, str(HAND_MOTION_SRC))
 
+FINAL_DEMO_SRC = PROJECT_ROOT / "final_demo" / "src"
+if str(FINAL_DEMO_SRC) not in sys.path:
+    sys.path.insert(0, str(FINAL_DEMO_SRC))
+
 from detector import analyze_video_for_silent_signal  # noqa: E402  (경로 삽입 후 import)
 from detector_front import analyze_video_for_silent_signal_front  # noqa: E402
+from exhibition_audio_service import detect_camera_occlusion, detect_person_dwell  # noqa: E402
+
+logger = logging.getLogger("vision_api")
 
 
 MODEL_BUNDLE_PATH = PROJECT_ROOT / "results/evaluation/fixed_10s_model/xgboost_fixed_10s.pkl"
@@ -71,6 +80,36 @@ LABEL_DETAILS = {
     "A20": "attempting_to_look_inside",
     "A21": "long_or_repeated_door_knocking",
 }
+
+AUDIO_EXHIBITION_MODE = "exhibition_rules"
+AUDIO_TEMPORAL_MODE = "temporal_trial6"
+VALID_AUDIO_MODES = {AUDIO_EXHIBITION_MODE, AUDIO_TEMPORAL_MODE}
+VALID_TEMPORAL_MODELS = {"temporal_trial6", "temporal_trial6_scaleaug", "temporal_img"}
+
+
+def selected_audio_mode() -> str:
+    """Route AUDIO independently from the legacy behavior-model selector."""
+    mode = os.getenv("VISION_AUDIO_MODE", AUDIO_EXHIBITION_MODE).strip().lower()
+    if mode not in VALID_AUDIO_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail="VISION_AUDIO_MODE must be 'exhibition_rules' or 'temporal_trial6'.",
+        )
+    return mode
+
+
+def selected_temporal_model() -> str:
+    """Limit the explicit backup route to preserved Trial 6 variants."""
+    model = os.getenv("VISION_MODEL", AUDIO_TEMPORAL_MODE).strip().lower()
+    if model not in VALID_TEMPORAL_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "VISION_MODEL must select a Trial 6 variant when "
+                "VISION_AUDIO_MODE=temporal_trial6."
+            ),
+        )
+    return model
 
 
 def analyze_silent_signal(video_path: Path):
@@ -149,19 +188,23 @@ def normalize_security_event_id(value: str | None) -> str | None:
 
 
 class InferenceService:
-    def __init__(self, model_choice: str | None = None) -> None:
+    def __init__(self, model_choice: str | None = None, *, load_behavior_model: bool = True) -> None:
         self.model_choice = model_choice or os.getenv("VISION_MODEL", "xgboost")
         if self.model_choice not in {"xgboost", "temporal_trial6", "temporal_trial6_scaleaug", "temporal_img"}:
             raise ValueError("VISION_MODEL must be xgboost, temporal_trial6, temporal_trial6_scaleaug, or temporal_img")
-        if not MODEL_BUNDLE_PATH.is_file() or not YOLO_PATH.is_file() or not POSE_PATH.is_file():
+        required_paths = [YOLO_PATH]
+        if load_behavior_model:
+            required_paths.extend([MODEL_BUNDLE_PATH, POSE_PATH])
+        if not all(path.is_file() for path in required_paths):
             raise FileNotFoundError("Vision inference model file is missing.")
         self.temporal = None
-        if self.model_choice == "xgboost":
+        self.classifier = self.encoder = self.feature_columns = None
+        if load_behavior_model and self.model_choice == "xgboost":
             bundle = joblib.load(MODEL_BUNDLE_PATH)
             self.classifier = bundle["model"]
             self.encoder = bundle["label_encoder"]
             self.feature_columns = bundle["feature_columns"]
-        else:
+        elif load_behavior_model:
             self.temporal = TemporalInference(self.model_choice)
         self.yolo = YOLO(str(YOLO_PATH))
         # vid_stride는 절대 1보다 크게 쓰지 않는다. BoT-SORT는 상태를 유지하는
@@ -372,6 +415,8 @@ async def lifespan(app: FastAPI):
     # Keypad integration must work even when this desktop has no camera and no
     # one has requested heavyweight video inference yet. Load models on demand.
     app.state.service = None
+    app.state.temporal_service = None
+    app.state.exhibition_service = None
     yield
 
 
@@ -383,6 +428,7 @@ def health() -> dict[str, str]:
     return {
         "status": "ok",
         "model": os.getenv("VISION_MODEL", "xgboost"),
+        "audioMode": os.getenv("VISION_AUDIO_MODE", AUDIO_EXHIBITION_MODE),
         "videoInferenceLoaded": str(app.state.service is not None).lower(),
     }
 
@@ -450,6 +496,8 @@ async def analyze_vision(
         raise HTTPException(status_code=415, detail="Only .mp4 files are supported.")
 
     securityEventId = normalize_security_event_id(securityEventId)
+    if triggerType == "AUDIO" and securityEventId is None:
+        raise HTTPException(status_code=422, detail="securityEventId must be a non-empty string.")
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temporary_file:
@@ -459,6 +507,72 @@ async def analyze_vision(
             raise HTTPException(status_code=413, detail="Video exceeds 100 MB limit.")
 
         video = _video_metadata(temporary_path, file.filename)
+
+        # AUDIO routing is deliberately evaluated before the legacy branch.
+        # KEYPAD never reads VISION_AUDIO_MODE.
+        if triggerType == "AUDIO":
+            audio_mode = selected_audio_mode()
+            if audio_mode == AUDIO_EXHIBITION_MODE:
+                if app.state.exhibition_service is None:
+                    app.state.exhibition_service = InferenceService(
+                        model_choice=AUDIO_TEMPORAL_MODE,
+                        load_behavior_model=False,
+                    )
+                exhibition_service = app.state.exhibition_service
+                occlusion_events, occlusion_info = detect_camera_occlusion(
+                    temporary_path, float(video["fps"])
+                )
+                tracking_started = time.perf_counter()
+                tracking = exhibition_service._tracking_features(temporary_path)
+                tracking_seconds = time.perf_counter() - tracking_started
+                window_seconds = min(10.0, float(video["durationSeconds"]))
+                frame_limit = max(1, round(window_seconds * float(video["fps"])))
+                tracking_window = tracking[tracking["frame"] < frame_limit].copy()
+                dwell_events = detect_person_dwell(
+                    tracking_window,
+                    float(video["fps"]),
+                    window_seconds=window_seconds,
+                )
+                logger.info(
+                    "exhibition_audio_diagnostics=%s",
+                    json.dumps({
+                        "triggerId": triggerId,
+                        "securityEventId": securityEventId,
+                        "video": video["fileName"],
+                        "occlusionEvents": occlusion_events,
+                        "dwellEvents": dwell_events,
+                        "occlusionProcessingSeconds": occlusion_info["analysisSeconds"],
+                        "trackingProcessingSeconds": round(tracking_seconds, 3),
+                    }, ensure_ascii=False),
+                )
+                exhibition_observations = {
+                    "analysisMode": AUDIO_EXHIBITION_MODE,
+                    "trackedPersonCount": int(tracking_window["track_id"].nunique()) if not tracking_window.empty else 0,
+                    "hasTracking": not tracking_window.empty,
+                    "hasPose": False,
+                }
+                return {
+                    "status": "success",
+                    "result": {
+                        "trigger": {
+                            "triggerId": triggerId,
+                            "triggerType": triggerType,
+                            "securityEventId": securityEventId,
+                            "triggeredAt": triggeredAt.isoformat(),
+                        },
+                        "analyzedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                        "video": video,
+                        "behavior": None,
+                        "visionEvents": [*occlusion_events, *dwell_events],
+                        "observations": exhibition_observations,
+                    },
+                }
+
+            # The preserved behavior branch below uses the selected Trial 6
+            # model only when explicitly requested.
+            temporal_model = selected_temporal_model()
+            if app.state.service is None or app.state.service.model_choice != temporal_model:
+                app.state.service = InferenceService(model_choice=temporal_model)
 
         behavior: dict[str, Any] | None = None
         vision_events: list[dict[str, Any]] = []
