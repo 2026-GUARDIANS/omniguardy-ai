@@ -8,6 +8,7 @@ Spring Boot contract:
 from __future__ import annotations
 
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
 import json
@@ -30,6 +31,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 import torch
 from ultralytics import YOLO
+from ultralytics.data.loaders import LoadImagesAndVideos, SourceTypes
 from mediapipe.tasks.python import vision
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +45,7 @@ from tracking.keypad_rules import (
     detect_rear_approach,
     detect_weapon_proximity,
 )
-from tracking.keypad_rules_front import detect_front_rear_approach
+from tracking.keypad_rules_front import detect_front_rear_approach, identify_front_operator
 from tracking.hand_keypad_rules import Roi, HandRuleConfig, RepeatedHandApproach
 from tracking.handle_roi_rules import HandleRuleConfig as HandleRoiRuleConfig, analyze_handle_motion, apply_a18_override
 from serving.temporal_inference import TemporalInference
@@ -60,8 +62,13 @@ if str(FINAL_DEMO_SRC) not in sys.path:
     sys.path.insert(0, str(FINAL_DEMO_SRC))
 
 from detector import analyze_video_for_silent_signal  # noqa: E402  (경로 삽입 후 import)
-from detector_front import analyze_video_for_silent_signal_front  # noqa: E402
+from detector_front import (  # noqa: E402
+    analyze_video_for_silent_signal_front,
+    collect_front_hand_observations,
+    evaluate_front_hand_trace,
+)
 from exhibition_audio_service import detect_camera_occlusion, detect_person_dwell  # noqa: E402
+from api.silent_signal_early import analyze_until_silent_signal
 
 logger = logging.getLogger("vision_api")
 
@@ -85,6 +92,43 @@ AUDIO_EXHIBITION_MODE = "exhibition_rules"
 AUDIO_TEMPORAL_MODE = "temporal_trial6"
 VALID_AUDIO_MODES = {AUDIO_EXHIBITION_MODE, AUDIO_TEMPORAL_MODE}
 VALID_TEMPORAL_MODELS = {"temporal_trial6", "temporal_trial6_scaleaug", "temporal_img"}
+
+
+def _environment_flag(name: str, *, default: bool = False) -> bool:
+    """Read an opt-in boolean environment flag without changing legacy defaults."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+class LimitedVideoSource(LoadImagesAndVideos):
+    """A finite Ultralytics video source that releases its capture at a frame bound.
+
+    This ends the source through normal ``StopIteration`` rather than breaking
+    the lazy YOLO result generator.  It avoids re-encoding a short MP4 and, on
+    Windows, lets the loader release its own OpenCV capture before request
+    cleanup deletes the uploaded temporary file.
+    """
+
+    def __init__(self, path: str | Path, *, max_frames: int) -> None:
+        super().__init__(str(path), batch=1, vid_stride=1, channels=3)
+        self.max_frames = max_frames
+        # ``load_inference_source`` treats subclasses of LoadImagesAndVideos
+        # as an in-memory loader and expects this attribute to already exist.
+        self.source_type = SourceTypes(stream=False, screenshot=False, from_img=False, tensor=False)
+
+    def close(self) -> None:
+        """Release the decoder for normal and exceptional generator exits."""
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+
+    def __next__(self):
+        if self.frame >= self.max_frames:
+            self.close()
+            raise StopIteration
+        return super().__next__()
 
 
 def selected_audio_mode() -> str:
@@ -227,26 +271,44 @@ class InferenceService:
         device_name = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"[vision_api] YOLO device={device_name}, imgsz={self.yolo_imgsz}, vid_stride={self.yolo_vid_stride}")
 
-    def _tracking_features(self, video_path: Path) -> pd.DataFrame:
+    def _tracking_features(
+        self, video_path: Path, *, max_frames: int | None = None,
+    ) -> pd.DataFrame:
+        """Track people from the source video, optionally stopping at a source-frame bound.
+
+        ``max_frames`` is intentionally opt-in at the API call site. It uses a
+        finite source loader rather than a shortened/re-encoded MP4, so source
+        frame numbering remains unchanged and the decoder ends normally.
+        """
         rows: list[dict[str, Any]] = []
         device: int | str = 0 if torch.cuda.is_available() else "cpu"
-        results = self.yolo.track(
-            source=str(video_path), tracker="botsort.yaml", persist=False, save=False,
-            conf=0.3, classes=[0], stream=True, device=device, verbose=False,
-            vid_stride=self.yolo_vid_stride, imgsz=self.yolo_imgsz,
+        source: str | LimitedVideoSource = (
+            LimitedVideoSource(video_path, max_frames=max_frames)
+            if max_frames is not None else str(video_path)
         )
-        for frame_idx, result in enumerate(results):
-            if result.boxes is None:
-                continue
-            for box in result.boxes:
-                if box.id is None:
+        try:
+            results = self.yolo.track(
+                source=source, tracker="botsort.yaml", persist=False, save=False,
+                conf=0.3, classes=[0], stream=True, device=device, verbose=False,
+                vid_stride=self.yolo_vid_stride, imgsz=self.yolo_imgsz,
+            )
+            for frame_idx, result in enumerate(results):
+                if result.boxes is None:
                     continue
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                rows.append({
-                    "frame": frame_idx * self.yolo_vid_stride, "track_id": int(box.id[0]),
-                    "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2),
-                    "confidence": float(box.conf[0]),
-                })
+                for box in result.boxes:
+                    if box.id is None:
+                        continue
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    rows.append({
+                        "frame": frame_idx * self.yolo_vid_stride, "track_id": int(box.id[0]),
+                        "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2),
+                        "confidence": float(box.conf[0]),
+                    })
+        finally:
+            # The plain-path loader owns its capture.  The bounded loader is
+            # ours, so close it on model/decoder errors as well as EOF.
+            if isinstance(source, LimitedVideoSource):
+                source.close()
         return pd.DataFrame(rows)
 
     def _pose_features(self, video_path: Path) -> pd.DataFrame:
@@ -482,6 +544,197 @@ def _frame_dimensions(video_path: Path) -> tuple[int, int]:
     return width, height
 
 
+def _analyze_exhibition_audio(
+    service: InferenceService,
+    video_path: Path,
+    video: dict[str, Any],
+) -> tuple[list[dict[str, Any]], pd.DataFrame, dict[str, float | bool | int]]:
+    """Run the exhibition AUDIO rules with optional, non-default optimizations.
+
+    The legacy path remains the default: full-upload tracking followed by
+    OpenCV occlusion analysis.  The two opt-ins are deliberately independent
+    so baseline, window-only, parallel-only, and combined runs are comparable:
+
+    * VISION_EXHIBITION_LIMIT_TRACKING_TO_WINDOW=true: stop YOLO after the
+      same first-10-second window already used by the AUDIO rules.
+    * VISION_EXHIBITION_PARALLEL_ANALYSIS=true: overlap CPU OpenCV analysis
+      and the single YOLO/BoT-SORT call.  No second thread accesses YOLO.
+    """
+    window_seconds = min(10.0, float(video["durationSeconds"]))
+    frame_limit = max(1, round(window_seconds * float(video["fps"])))
+    limit_tracking = _environment_flag("VISION_EXHIBITION_LIMIT_TRACKING_TO_WINDOW")
+    parallel_analysis = _environment_flag("VISION_EXHIBITION_PARALLEL_ANALYSIS")
+    tracking_limit = frame_limit if limit_tracking else None
+
+    def timed_tracking() -> tuple[pd.DataFrame, float]:
+        started = time.perf_counter()
+        result = service._tracking_features(video_path, max_frames=tracking_limit)
+        return result, time.perf_counter() - started
+
+    if parallel_analysis:
+        # OpenCV owns one decoder on a CPU worker; YOLO/BoT-SORT owns another
+        # decoder on its worker.  The shared model is used by only this one
+        # tracking task, avoiding concurrent tracker/model access.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="exhibition") as executor:
+            occlusion_future = executor.submit(
+                detect_camera_occlusion, video_path, float(video["fps"]),
+            )
+            tracking_future = executor.submit(timed_tracking)
+            occlusion_events, occlusion_info = occlusion_future.result()
+            tracking, tracking_seconds = tracking_future.result()
+        # Per-task times belong to their functions.  The caller additionally
+        # records total wall time; do not sum these parallel durations.
+    else:
+        occlusion_events, occlusion_info = detect_camera_occlusion(
+            video_path, float(video["fps"]),
+        )
+        tracking, tracking_seconds = timed_tracking()
+
+    dwell_started = time.perf_counter()
+    tracking_window = tracking[tracking["frame"] < frame_limit].copy()
+    dwell_events = detect_person_dwell(
+        tracking_window,
+        float(video["fps"]),
+        window_seconds=window_seconds,
+    )
+    dwell_seconds = time.perf_counter() - dwell_started
+    return [*occlusion_events, *dwell_events], tracking_window, {
+        "windowSeconds": window_seconds,
+        "trackingFrameLimit": frame_limit if limit_tracking else 0,
+        "parallelAnalysis": parallel_analysis,
+        "occlusionSeconds": float(occlusion_info["analysisSeconds"]),
+        "trackingSeconds": tracking_seconds,
+        "dwellSeconds": dwell_seconds,
+    }
+
+
+def _analyze_keypad(
+    service: InferenceService,
+    video_path: Path,
+    video: dict[str, Any],
+    *,
+    precomputed_signal: Any | None = None,
+) -> tuple[Any, pd.DataFrame, dict[str, Any] | None, dict[str, Any] | None, dict[str, float | bool]]:
+    """Run independent KEYPAD video passes, optionally in parallel.
+
+    Silent Signal constructs its own MediaPipe detector and OpenCV capture.
+    The tracking worker is the only worker that touches the shared YOLO model.
+    Weapon detection remains after tracking because it needs the tracking data
+    and uses that same model.
+    """
+    parallel_analysis = _environment_flag("VISION_KEYPAD_PARALLEL_ANALYSIS")
+    coordinate_mode = os.getenv("SILENT_SIGNAL_COORDINATE_MODE", "legacy").strip().lower()
+    operator_filter_requested = _environment_flag("VISION_SILENT_SIGNAL_OPERATOR_ONLY")
+    # B is deliberately front-camera-only, because its hand coordinates are
+    # transformed back from the front detector's mirrored MediaPipe input.
+    # A caller explicitly requesting it with legacy coordinates gets a clear
+    # error instead of an unfiltered silent fallback.
+    if operator_filter_requested and coordinate_mode != "front":
+        raise HTTPException(
+            status_code=422,
+            detail="VISION_SILENT_SIGNAL_OPERATOR_ONLY requires SILENT_SIGNAL_COORDINATE_MODE=front.",
+        )
+    operator_filter_enabled = operator_filter_requested and coordinate_mode == "front"
+
+    def timed_signal():
+        started = time.perf_counter()
+        # The B experiment only collects observations here.  Once tracking is
+        # complete below, ownership is evaluated from that *same* tracking
+        # dataframe; this never invokes YOLO a second time.
+        result = (
+            collect_front_hand_observations(video_path)
+            if operator_filter_enabled else analyze_silent_signal(video_path)
+        )
+        return result, time.perf_counter() - started
+
+    def timed_tracking():
+        started = time.perf_counter()
+        result = service._tracking_features(video_path)
+        return result, time.perf_counter() - started
+
+    if precomputed_signal is not None:
+        # The early prefix scan reached EOF without a signal. Reuse that exact
+        # full-video result instead of invoking MediaPipe twice. Tracking then
+        # runs normally; no background worker survives the request.
+        signal = precomputed_signal
+        signal_seconds = 0.0
+        tracking, tracking_seconds = timed_tracking()
+    elif parallel_analysis:
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="keypad") as executor:
+            signal_future = executor.submit(timed_signal)
+            tracking_future = executor.submit(timed_tracking)
+            signal, signal_seconds = signal_future.result()
+            tracking, tracking_seconds = tracking_future.result()
+    else:
+        signal, signal_seconds = timed_signal()
+        tracking, tracking_seconds = timed_tracking()
+
+    dimensions_started = time.perf_counter()
+    frame_width, frame_height = _frame_dimensions(video_path)
+    tracking.attrs["frame_width"] = frame_width
+    tracking.attrs["frame_height"] = frame_height
+    dimensions_seconds = time.perf_counter() - dimensions_started
+
+    operator_filter_seconds = 0.0
+    operator_id: int | None = None
+    if operator_filter_enabled:
+        operator_filter_started = time.perf_counter()
+        operator_id = identify_front_operator(tracking, float(video["fps"]))
+        frame_boxes: dict[int, list[dict[str, Any]]] = {}
+        if not tracking.empty:
+            for row in tracking.itertuples(index=False):
+                frame_boxes.setdefault(int(row.frame), []).append({
+                    "track_id": int(row.track_id),
+                    "x1": float(row.x1), "y1": float(row.y1),
+                    "x2": float(row.x2), "y2": float(row.y2),
+                })
+        signal, ownership_rows = evaluate_front_hand_trace(
+            signal,
+            frame_boxes=frame_boxes,
+            operator_track_id=operator_id,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            same_hand_only=_environment_flag("VISION_SILENT_SIGNAL_SAME_HAND_ONLY"),
+        )
+        operator_filter_seconds = time.perf_counter() - operator_filter_started
+        counts: dict[str, int] = {}
+        for row in ownership_rows:
+            state = str(row["ownership"])
+            counts[state] = counts.get(state, 0) + 1
+        logger.info(
+            "keypad_operator_hand_filter operatorTrackId=%s ownershipCounts=%s "
+            "sameHandOnly=%s",
+            operator_id, counts,
+            _environment_flag("VISION_SILENT_SIGNAL_SAME_HAND_ONLY"),
+        )
+
+    rear_started = time.perf_counter()
+    rear_approach_event = analyze_rear_approach(tracking, float(video["fps"]))
+    rear_seconds = time.perf_counter() - rear_started
+
+    weapon_event = None
+    weapon_seconds = 0.0
+    if ENABLE_WEAPON_DETECTION:
+        weapon_started = time.perf_counter()
+        device: int | str = 0 if torch.cuda.is_available() else "cpu"
+        weapon_event = detect_weapon_proximity(
+            video_path, service.yolo, service.yolo_imgsz, tracking, device,
+        )
+        weapon_seconds = time.perf_counter() - weapon_started
+
+    return signal, tracking, rear_approach_event, weapon_event, {
+        "parallelAnalysis": parallel_analysis,
+        "precomputedSilentSignal": precomputed_signal is not None,
+        "operatorHandFilter": operator_filter_enabled,
+        "operatorHandFilterSeconds": operator_filter_seconds,
+        "silentSignalSeconds": signal_seconds,
+        "trackingSeconds": tracking_seconds,
+        "frameDimensionsSeconds": dimensions_seconds,
+        "rearApproachSeconds": rear_seconds,
+        "weaponSeconds": weapon_seconds,
+    }
+
+
 @app.post("/analyze/vision")
 async def analyze_vision(
     file: UploadFile = File(...),
@@ -506,7 +759,9 @@ async def analyze_vision(
         if temporary_path.stat().st_size > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Video exceeds 100 MB limit.")
 
+        metadata_started = time.perf_counter()
         video = _video_metadata(temporary_path, file.filename)
+        metadata_seconds = time.perf_counter() - metadata_started
 
         # AUDIO routing is deliberately evaluated before the legacy branch.
         # KEYPAD never reads VISION_AUDIO_MODE.
@@ -519,32 +774,47 @@ async def analyze_vision(
                         load_behavior_model=False,
                     )
                 exhibition_service = app.state.exhibition_service
-                occlusion_events, occlusion_info = detect_camera_occlusion(
-                    temporary_path, float(video["fps"])
+                analysis_started = time.perf_counter()
+                vision_events, tracking_window, timing = _analyze_exhibition_audio(
+                    exhibition_service, temporary_path, video,
                 )
-                tracking_started = time.perf_counter()
-                tracking = exhibition_service._tracking_features(temporary_path)
-                tracking_seconds = time.perf_counter() - tracking_started
-                window_seconds = min(10.0, float(video["durationSeconds"]))
-                frame_limit = max(1, round(window_seconds * float(video["fps"])))
-                tracking_window = tracking[tracking["frame"] < frame_limit].copy()
-                dwell_events = detect_person_dwell(
-                    tracking_window,
-                    float(video["fps"]),
-                    window_seconds=window_seconds,
-                )
+                analysis_wall_seconds = time.perf_counter() - analysis_started
+                # Preserve the existing diagnostics keys for consumers that
+                # ingest server logs, then emit separate timing-only details.
                 logger.info(
                     "exhibition_audio_diagnostics=%s",
                     json.dumps({
                         "triggerId": triggerId,
                         "securityEventId": securityEventId,
                         "video": video["fileName"],
-                        "occlusionEvents": occlusion_events,
-                        "dwellEvents": dwell_events,
-                        "occlusionProcessingSeconds": occlusion_info["analysisSeconds"],
-                        "trackingProcessingSeconds": round(tracking_seconds, 3),
+                        "occlusionEvents": [
+                            event for event in vision_events
+                            if event.get("eventType") == "CAMERA_OCCLUSION_SUSPECTED"
+                        ],
+                        "dwellEvents": [
+                            event for event in vision_events
+                            if event.get("eventType") == "PERSON_DWELL_OBSERVED"
+                        ],
+                        "occlusionProcessingSeconds": round(float(timing["occlusionSeconds"]), 3),
+                        "trackingProcessingSeconds": round(float(timing["trackingSeconds"]), 3),
                     }, ensure_ascii=False),
                 )
+                timing_payload = json.dumps({
+                    "triggerId": triggerId,
+                    "securityEventId": securityEventId,
+                    "video": video["fileName"],
+                    "metadataSeconds": round(metadata_seconds, 3),
+                    "analysisWallSeconds": round(analysis_wall_seconds, 3),
+                    **{key: round(value, 3) if isinstance(value, float) else value
+                       for key, value in timing.items()},
+                }, ensure_ascii=False)
+                # Uvicorn does not necessarily enable this module's INFO
+                # logger.  Benchmark runs can opt in to a visible WARNING
+                # record without modifying the response DTO or normal logs.
+                if _environment_flag("VISION_EXHIBITION_TIMING_LOG"):
+                    logger.warning("exhibition_audio_timing=%s", timing_payload)
+                else:
+                    logger.info("exhibition_audio_timing=%s", timing_payload)
                 exhibition_observations = {
                     "analysisMode": AUDIO_EXHIBITION_MODE,
                     "trackedPersonCount": int(tracking_window["track_id"].nunique()) if not tracking_window.empty else 0,
@@ -563,7 +833,7 @@ async def analyze_vision(
                         "analyzedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
                         "video": video,
                         "behavior": None,
-                        "visionEvents": [*occlusion_events, *dwell_events],
+                        "visionEvents": vision_events,
                         "observations": exhibition_observations,
                     },
                 }
@@ -605,18 +875,81 @@ async def analyze_vision(
                 print(f"[vision_api] AUDIO prediction={analysis['prediction']} (시연 매핑 대상 아님, 로그만)")
 
         else:  # KEYPAD
+            early_return_requested = _environment_flag("VISION_KEYPAD_EARLY_RETURN_ON_SILENT_SIGNAL")
+            coordinate_mode = os.getenv("SILENT_SIGNAL_COORDINATE_MODE", "legacy").strip().lower()
+            operator_filter_requested = _environment_flag("VISION_SILENT_SIGNAL_OPERATOR_ONLY")
+            same_hand_requested = _environment_flag("VISION_SILENT_SIGNAL_SAME_HAND_ONLY")
+            early_prefix_supported = (
+                coordinate_mode in {"legacy", "", "front"}
+                and not operator_filter_requested
+                and not (coordinate_mode == "front" and same_hand_requested)
+            )
+            early_signal = None
+            if early_return_requested and early_prefix_supported:
+                early_started = time.perf_counter()
+                early_signal = analyze_until_silent_signal(
+                    temporary_path,
+                    coordinate_mode="front" if coordinate_mode == "front" else "legacy",
+                )
+                early_seconds = time.perf_counter() - early_started
+                if early_signal.detected:
+                    # Do not create or submit YOLO work in this branch. This is
+                    # the only reliable cancellation strategy for a synchronous
+                    # CUDA tracker: no worker, model, temp-file reference, or
+                    # GPU allocation remains after this request returns.
+                    logger.warning(
+                        "keypad_early_return triggerId=%s frame=%s seconds=%.3f coordinateMode=%s",
+                        triggerId, early_signal.detected_frame, early_seconds, coordinate_mode or "legacy",
+                    )
+                    return {
+                        "status": "success",
+                        "result": {
+                            "trigger": {
+                                "triggerId": triggerId,
+                                "triggerType": triggerType,
+                                "securityEventId": securityEventId,
+                                "triggeredAt": triggeredAt.isoformat(),
+                            },
+                            "analyzedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                            "video": video,
+                            "behavior": None,
+                            "visionEvents": [{
+                                "eventType": "SILENT_SIGNAL",
+                                "confidence": early_signal.confidence,
+                                "detectedFrame": early_signal.detected_frame,
+                                "details": {
+                                    "signalCode": early_signal.signal_code,
+                                    "signalName": early_signal.signal_name,
+                                },
+                            }],
+                            # The count is intentionally null, not fabricated:
+                            # person tracking was deliberately not started.
+                            "observations": {
+                                "trackedPersonCount": None,
+                                "hasTracking": False,
+                                "hasPose": early_signal.hand_present_frames > 0,
+                            },
+                            "analysisComplete": False,
+                            "earlyReturnReason": "SILENT_SIGNAL",
+                        },
+                    }
+            elif early_return_requested:
+                logger.warning(
+                    "keypad_early_return_disabled triggerId=%s coordinateMode=%s operatorOnly=%s sameHandOnly=%s",
+                    triggerId, coordinate_mode or "legacy", operator_filter_requested, same_hand_requested,
+                )
             if app.state.service is None:
                 app.state.service = InferenceService()
             service = app.state.service
 
-            signal = analyze_silent_signal(temporary_path)
             # SILENT_SIGNAL(손동작)뿐 아니라 REAR_CLOSE_APPROACH_SUSPECTED(후방 접근)와
             # 실험적 흉기 근접 감지도 같은 person tracking 결과를 공유해서 쓴다.
-            tracking = service._tracking_features(temporary_path)
             # 정규화 ROI를 실제 프레임 좌표로 바꾸기 위한 원본 크기다.
-            frame_width, frame_height = _frame_dimensions(temporary_path)
-            tracking.attrs["frame_width"] = frame_width
-            tracking.attrs["frame_height"] = frame_height
+            analysis_started = time.perf_counter()
+            signal, tracking, rear_approach_event, weapon_event, keypad_timing = _analyze_keypad(
+                service, temporary_path, video, precomputed_signal=early_signal,
+            )
+            analysis_wall_seconds = time.perf_counter() - analysis_started
 
             observations["hasPose"] = signal.hand_present_frames > 0
             observations["hasTracking"] = not tracking.empty
@@ -635,17 +968,24 @@ async def analyze_vision(
                     },
                 })
 
-            rear_approach_event = analyze_rear_approach(tracking, video["fps"])
             if rear_approach_event is not None:
                 vision_events.append(rear_approach_event)
 
-            if ENABLE_WEAPON_DETECTION:
-                device: int | str = 0 if torch.cuda.is_available() else "cpu"
-                weapon_event = detect_weapon_proximity(
-                    temporary_path, service.yolo, service.yolo_imgsz, tracking, device,
-                )
-                if weapon_event is not None:
-                    vision_events.append(weapon_event)
+            if weapon_event is not None:
+                vision_events.append(weapon_event)
+
+            keypad_timing_payload = json.dumps({
+                "triggerId": triggerId,
+                "video": video["fileName"],
+                "metadataSeconds": round(metadata_seconds, 3),
+                "analysisWallSeconds": round(analysis_wall_seconds, 3),
+                **{key: round(value, 3) if isinstance(value, float) else value
+                   for key, value in keypad_timing.items()},
+            }, ensure_ascii=False)
+            if _environment_flag("VISION_KEYPAD_TIMING_LOG"):
+                logger.warning("keypad_analysis_timing=%s", keypad_timing_payload)
+            else:
+                logger.info("keypad_analysis_timing=%s", keypad_timing_payload)
 
         result = {
             "trigger": {
