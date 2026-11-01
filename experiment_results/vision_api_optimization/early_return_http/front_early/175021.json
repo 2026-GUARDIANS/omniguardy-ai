@@ -1,0 +1,37 @@
+{
+  "status": "success",
+  "result": {
+    "trigger": {
+      "triggerId": "early-front_early-175021",
+      "triggerType": "KEYPAD",
+      "securityEventId": "early-175021",
+      "triggeredAt": "2026-11-01T18:53:52.049770+00:00"
+    },
+    "analyzedAt": "2026-11-02T03:54:12+09:00",
+    "video": {
+      "fileName": "20261019_175021.mp4",
+      "durationSeconds": 12.957,
+      "fps": 30.023,
+      "frameCount": 389
+    },
+    "behavior": null,
+    "visionEvents": [
+      {
+        "eventType": "SILENT_SIGNAL",
+        "confidence": 1.0,
+        "detectedFrame": 333,
+        "details": {
+          "signalCode": "S1",
+          "signalName": "emergency_hand_gesture"
+        }
+      }
+    ],
+    "observations": {
+      "trackedPersonCount": null,
+      "hasTracking": false,
+      "hasPose": true
+    },
+    "analysisComplete": false,
+    "earlyReturnReason": "SILENT_SIGNAL"
+  }
+}

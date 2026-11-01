@@ -1,0 +1,25 @@
+{
+  "status": "success",
+  "result": {
+    "trigger": {
+      "triggerId": "early-legacy_early-174341",
+      "triggerType": "KEYPAD",
+      "securityEventId": "early-174341",
+      "triggeredAt": "2026-11-01T18:50:31.244016+00:00"
+    },
+    "analyzedAt": "2026-11-02T03:51:13+09:00",
+    "video": {
+      "fileName": "20261019_174341.mp4",
+      "durationSeconds": 12.932,
+      "fps": 30.004,
+      "frameCount": 388
+    },
+    "behavior": null,
+    "visionEvents": [],
+    "observations": {
+      "trackedPersonCount": 2,
+      "hasTracking": true,
+      "hasPose": false
+    }
+  }
+}

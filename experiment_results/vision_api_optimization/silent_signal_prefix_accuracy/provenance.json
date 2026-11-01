@@ -1,0 +1,13 @@
+{
+  "purpose": "read-only prefix/full equivalence; not HTTP or performance validation",
+  "flags": {
+    "VISION_SILENT_SIGNAL_SAME_HAND_ONLY": false,
+    "VISION_SILENT_SIGNAL_OPERATOR_ONLY": false
+  },
+  "rules": {
+    "MIN_FIST_FRAMES": 5,
+    "REQUIRED_REPEATS": 1,
+    "legacyMaxTransitionGap": 15,
+    "frontMaxTransitionGap": 30
+  }
+}

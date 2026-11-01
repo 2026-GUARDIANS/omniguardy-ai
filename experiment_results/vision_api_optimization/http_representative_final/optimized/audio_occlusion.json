@@ -1,0 +1,72 @@
+{
+  "status": "success",
+  "result": {
+    "trigger": {
+      "triggerId": "opt-optimized-audio_occlusion",
+      "triggerType": "AUDIO",
+      "securityEventId": "opt-optimized-audio_occlusion",
+      "triggeredAt": "2026-11-01T17:42:34.459511+00:00"
+    },
+    "analyzedAt": "2026-11-02T02:42:56+09:00",
+    "video": {
+      "fileName": "20261019_173225.mp4",
+      "durationSeconds": 13.131,
+      "fps": 30.004,
+      "frameCount": 394
+    },
+    "behavior": null,
+    "visionEvents": [
+      {
+        "eventType": "CAMERA_OCCLUSION_SUSPECTED",
+        "confidence": null,
+        "detectedFrame": 160,
+        "details": {
+          "startSeconds": 5.066,
+          "endSeconds": 5.466,
+          "durationSeconds": 0.433,
+          "edgeDensityThreshold": 0.001,
+          "laplacianThreshold": 5.0,
+          "minSustainedSeconds": 0.3,
+          "windowSeconds": 9.999,
+          "experimental": true
+        }
+      },
+      {
+        "eventType": "CAMERA_OCCLUSION_SUSPECTED",
+        "confidence": null,
+        "detectedFrame": 174,
+        "details": {
+          "startSeconds": 5.533,
+          "endSeconds": 6.566,
+          "durationSeconds": 1.067,
+          "edgeDensityThreshold": 0.001,
+          "laplacianThreshold": 5.0,
+          "minSustainedSeconds": 0.3,
+          "windowSeconds": 9.999,
+          "experimental": true
+        }
+      },
+      {
+        "eventType": "CAMERA_OCCLUSION_SUSPECTED",
+        "confidence": null,
+        "detectedFrame": 207,
+        "details": {
+          "startSeconds": 6.632,
+          "endSeconds": 9.965,
+          "durationSeconds": 3.366,
+          "edgeDensityThreshold": 0.001,
+          "laplacianThreshold": 5.0,
+          "minSustainedSeconds": 0.3,
+          "windowSeconds": 9.999,
+          "experimental": true
+        }
+      }
+    ],
+    "observations": {
+      "analysisMode": "exhibition_rules",
+      "trackedPersonCount": 2,
+      "hasTracking": true,
+      "hasPose": false
+    }
+  }
+}

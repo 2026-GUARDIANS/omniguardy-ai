@@ -1,0 +1,25 @@
+{
+  "status": "success",
+  "result": {
+    "trigger": {
+      "triggerId": "opt-baseline-keypad_compound",
+      "triggerType": "KEYPAD",
+      "securityEventId": "opt-baseline-keypad_compound",
+      "triggeredAt": "2026-11-01T17:41:40.492783+00:00"
+    },
+    "analyzedAt": "2026-11-02T02:42:28+09:00",
+    "video": {
+      "fileName": "20261019_175204.mp4",
+      "durationSeconds": 13.231,
+      "fps": 30.004,
+      "frameCount": 397
+    },
+    "behavior": null,
+    "visionEvents": [],
+    "observations": {
+      "trackedPersonCount": 3,
+      "hasTracking": true,
+      "hasPose": true
+    }
+  }
+}
