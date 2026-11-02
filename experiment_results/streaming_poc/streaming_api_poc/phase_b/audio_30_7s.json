@@ -1,0 +1,76 @@
+{
+  "video": "final_demo\\videos\\02_knock\\exit_reentry\\20261019_173843.mp4",
+  "triggerType": "AUDIO",
+  "fps": 30.0,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "sourceFramesIn7Seconds": 210,
+  "transmittedFrames": 210,
+  "acceptedFrames": 210,
+  "duplicateResponses": 0,
+  "conflict409": 0,
+  "queue429": 0,
+  "captureSeconds": 7.009,
+  "postCompleteDrainSeconds": 8.975,
+  "finalSeconds": 15.984,
+  "status": {
+    "sessionId": "fps-30-fd43a374",
+    "triggerId": "fps-test-30.0",
+    "securityEventId": "local-audio-fps-30-fd43a374",
+    "triggerType": "AUDIO",
+    "analysisState": "COMPLETED",
+    "inputComplete": true,
+    "nextExpectedFrameIndex": 210,
+    "queueDepth": 0,
+    "mediaPipeQueueMaxDepth": 85,
+    "yoloQueueMaxDepth": 128,
+    "finalResultAvailable": true,
+    "earlyEventCount": 0,
+    "callbackAttempts": [],
+    "error": null,
+    "analysisCompleteness": "COMPLETE_AUDIO",
+    "audioQueueMaxDepth": 36,
+    "trackingRecordCount": 173
+  },
+  "earlyEvent": null,
+  "captureStartToEarlyReceiverSeconds": null,
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "fps-30-fd43a374",
+    "trigger": {
+      "triggerId": "fps-test-30.0",
+      "triggerType": "AUDIO",
+      "securityEventId": "local-audio-fps-30-fd43a374"
+    },
+    "analysisState": "COMPLETE_AUDIO",
+    "relatedEarlyEventInstanceIds": [],
+    "status": "success",
+    "result": {
+      "visionEvents": [
+        {
+          "eventType": "PERSON_DWELL_OBSERVED",
+          "confidence": null,
+          "detectedFrame": 150,
+          "details": {
+            "trackId": 1,
+            "thresholdSeconds": 5.0,
+            "cumulativeObservedSeconds": 5.766,
+            "continuousObservedSeconds": 5.766,
+            "firstLastSpanSeconds": 5.733,
+            "maximumDetectionGapSeconds": 0.0,
+            "identityContinuity": "same_track_only",
+            "windowSeconds": 5.766,
+            "experimental": true
+          }
+        }
+      ],
+      "trackedPersonCount": 1,
+      "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+    },
+    "error": null,
+    "emittedAt": "2026-11-02T14:25:32.517+09:00"
+  },
+  "scope": "Streaming API Phase B; results depend on triggerType and contiguous source frames"
+}

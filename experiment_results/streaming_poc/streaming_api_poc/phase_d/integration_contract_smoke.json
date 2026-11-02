@@ -1,0 +1,200 @@
+{
+  "scope": "localhost mock only; no Pi, Spring Boot, or port-8000 API",
+  "checks": {
+    "unknown_status": 404,
+    "missing_trigger": 422,
+    "probe_start": 201,
+    "duplicate_session": 409,
+    "out_of_order": 409,
+    "first_frame": 202,
+    "duplicate_frame": {
+      "http": 202,
+      "body": {
+        "sessionId": "contract-probe-995882d5",
+        "frameIndex": 0,
+        "sourceFrameIndex": 0,
+        "status": "duplicate"
+      }
+    },
+    "complete_first": 202,
+    "complete_second": 202,
+    "post_complete_frame": 409,
+    "probe_result_idempotent": true,
+    "main_start": 201,
+    "main_complete": 202,
+    "main_result_idempotent": true,
+    "callback_attempt_count": 2,
+    "callback_retry_same_instance": true,
+    "early_in_final": true
+  },
+  "main": {
+    "framesSent": 210,
+    "captureSeconds": 6.994,
+    "postCompleteDrainSeconds": 1.364,
+    "finalSeconds": 8.357,
+    "status": {
+      "sessionId": "contract-main-24720d91",
+      "triggerId": "contract-main-trigger",
+      "securityEventId": null,
+      "triggerType": "KEYPAD",
+      "analysisState": "COMPLETED",
+      "inputComplete": true,
+      "nextExpectedFrameIndex": 210,
+      "queueDepth": 0,
+      "mediaPipeQueueMaxDepth": 16,
+      "yoloQueueMaxDepth": 34,
+      "finalResultAvailable": true,
+      "completedSessionTtlSecondsRemaining": 3599.932,
+      "earlyEventCount": 1,
+      "callbackAttempts": [
+        {
+          "messageType": "EARLY_EVENT",
+          "eventInstanceId": "contract-main-24720d91-signal-001",
+          "attempt": 1,
+          "status": 500,
+          "error": "<HTTPError 500: 'Internal Server Error'>",
+          "at": "2026-11-02T14:44:19.188+09:00",
+          "elapsedMs": 19.379
+        },
+        {
+          "messageType": "EARLY_EVENT",
+          "eventInstanceId": "contract-main-24720d91-signal-001",
+          "attempt": 2,
+          "status": 204,
+          "error": null,
+          "at": "2026-11-02T14:44:19.240+09:00",
+          "elapsedMs": 1.677
+        }
+      ],
+      "error": null,
+      "analysisCompleteness": "COMPLETE_KEYPAD",
+      "audioQueueMaxDepth": 0,
+      "trackingRecordCount": 290
+    },
+    "final": {
+      "messageType": "FINAL_RESULT",
+      "sessionId": "contract-main-24720d91",
+      "trigger": {
+        "triggerId": "contract-main-trigger",
+        "triggerType": "KEYPAD",
+        "securityEventId": null
+      },
+      "analysisState": "COMPLETED",
+      "analysisCompleteness": "COMPLETE_KEYPAD",
+      "relatedEarlyEventInstanceIds": [
+        "contract-main-24720d91-signal-001"
+      ],
+      "status": "success",
+      "result": {
+        "visionEvents": [
+          {
+            "eventType": "SILENT_SIGNAL",
+            "detectedFrame": 114,
+            "confirmedFrame": 114,
+            "capturedAt": "3.800000"
+          },
+          {
+            "eventType": "REAR_CLOSE_APPROACH_SUSPECTED",
+            "confidence": 0.84,
+            "detectedFrame": 43,
+            "details": {
+              "personCount": 3,
+              "delayedEntrySeconds": 1.43,
+              "distanceClosingDetected": true,
+              "closeProximityDurationSeconds": 2.13,
+              "operatorSelection": "front_foreground_bbox"
+            }
+          }
+        ],
+        "trackedPersonCount": 3,
+        "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+      },
+      "error": null,
+      "emittedAt": "2026-11-02T14:44:23.367+09:00"
+    },
+    "callbackRecords": [
+      {
+        "receivedPerf": 1678249.82008,
+        "payload": {
+          "messageType": "EARLY_EVENT",
+          "sessionId": "contract-main-24720d91",
+          "triggerId": "contract-main-trigger",
+          "securityEventId": null,
+          "triggerType": "KEYPAD",
+          "eventInstanceId": "contract-main-24720d91-signal-001",
+          "sequence": 1,
+          "provisional": true,
+          "event": {
+            "eventType": "SILENT_SIGNAL",
+            "detectedFrame": 114,
+            "confirmedFrame": 114,
+            "capturedAt": "3.800000"
+          },
+          "emittedAt": "2026-11-02T14:44:19.167+09:00"
+        }
+      },
+      {
+        "receivedPerf": 1678249.8722577,
+        "payload": {
+          "messageType": "EARLY_EVENT",
+          "sessionId": "contract-main-24720d91",
+          "triggerId": "contract-main-trigger",
+          "securityEventId": null,
+          "triggerType": "KEYPAD",
+          "eventInstanceId": "contract-main-24720d91-signal-001",
+          "sequence": 1,
+          "provisional": true,
+          "event": {
+            "eventType": "SILENT_SIGNAL",
+            "detectedFrame": 114,
+            "confirmedFrame": 114,
+            "capturedAt": "3.800000"
+          },
+          "emittedAt": "2026-11-02T14:44:19.167+09:00"
+        }
+      }
+    ]
+  },
+  "probe": {
+    "status": {
+      "sessionId": "contract-probe-995882d5",
+      "triggerId": "contract-probe-trigger",
+      "securityEventId": null,
+      "triggerType": "KEYPAD",
+      "analysisState": "COMPLETED",
+      "inputComplete": true,
+      "nextExpectedFrameIndex": 1,
+      "queueDepth": 0,
+      "mediaPipeQueueMaxDepth": 1,
+      "yoloQueueMaxDepth": 1,
+      "finalResultAvailable": true,
+      "completedSessionTtlSecondsRemaining": 3599.957,
+      "earlyEventCount": 0,
+      "callbackAttempts": [],
+      "error": null,
+      "analysisCompleteness": "COMPLETE_KEYPAD",
+      "audioQueueMaxDepth": 0,
+      "trackingRecordCount": 0
+    },
+    "final": {
+      "messageType": "FINAL_RESULT",
+      "sessionId": "contract-probe-995882d5",
+      "trigger": {
+        "triggerId": "contract-probe-trigger",
+        "triggerType": "KEYPAD",
+        "securityEventId": null
+      },
+      "analysisState": "COMPLETED",
+      "analysisCompleteness": "COMPLETE_KEYPAD",
+      "relatedEarlyEventInstanceIds": [],
+      "status": "success",
+      "result": {
+        "visionEvents": [],
+        "trackedPersonCount": 0,
+        "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+      },
+      "error": null,
+      "emittedAt": "2026-11-02T14:44:15.014+09:00"
+    }
+  }
+}

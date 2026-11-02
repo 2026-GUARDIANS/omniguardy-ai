@@ -1,0 +1,62 @@
+{
+  "sourceFrames": 397,
+  "received": [
+    {
+      "messageType": "EARLY_EVENT",
+      "sessionId": "smoke-175204",
+      "eventId": "local-smoke",
+      "eventInstanceId": "smoke-175204-signal-001",
+      "sequence": 1,
+      "provisional": true,
+      "event": {
+        "eventType": "SILENT_SIGNAL",
+        "detectedFrame": 114,
+        "confirmedFrame": 114
+      },
+      "emittedAt": "2026-11-02T13:43:57.872+09:00"
+    },
+    {
+      "messageType": "FINAL_RESULT",
+      "sessionId": "smoke-175204",
+      "eventId": "local-smoke",
+      "relatedEarlyEventInstanceIds": [
+        "smoke-175204-signal-001"
+      ],
+      "status": "success",
+      "result": {
+        "visionEvents": [
+          {
+            "eventType": "SILENT_SIGNAL",
+            "detectedFrame": 114,
+            "confirmedFrame": 114,
+            "capturedAt": "3.799493"
+          }
+        ],
+        "streamingPocScope": "SILENT_SIGNAL only"
+      },
+      "emittedAt": "2026-11-02T13:44:07.073+09:00"
+    }
+  ],
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "smoke-175204",
+    "eventId": "local-smoke",
+    "relatedEarlyEventInstanceIds": [
+      "smoke-175204-signal-001"
+    ],
+    "status": "success",
+    "result": {
+      "visionEvents": [
+        {
+          "eventType": "SILENT_SIGNAL",
+          "detectedFrame": 114,
+          "confirmedFrame": 114,
+          "capturedAt": "3.799493"
+        }
+      ],
+      "streamingPocScope": "SILENT_SIGNAL only"
+    },
+    "emittedAt": "2026-11-02T13:44:07.184+09:00"
+  },
+  "elapsedSeconds": 13.887
+}

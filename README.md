@@ -107,6 +107,52 @@ $env:VISION_MODEL = "temporal_trial6"
 
 이 모드의 `observations`에는 선택 필드 `analysisMode: "exhibition_rules"`가 포함됩니다. `temporal_trial6`과 KEYPAD 기존 응답에는 이 필드를 추가하지 않습니다. 상세 API 요청·응답 계약은 `api/vision_api.py` 구현을 기준으로 관리합니다.
 
+## Streaming Vision API (독립 PoC)
+
+기존 MP4 API(포트 8000)는 fallback 경로로 그대로 유지합니다. 별도의
+Streaming API(포트 8010)는 한 번의 7초 카메라 촬영에서 Raspberry Pi가 JPEG를
+Vision으로 직접 전송하고, MP4 녹화는 Spring Boot/S3 보관 경로로 병렬 처리하는
+구조를 검증한 PoC입니다.
+
+```text
+Raspberry Pi single capture
+  ├─ JPEG → Streaming Vision :8010 → EARLY_EVENT callback / FINAL_RESULT polling
+  └─ MP4 → Spring Boot → S3
+
+Streaming 실패·partial 결과 → 기존 MP4 /analyze/vision fallback
+```
+
+```powershell
+# 기존 MP4 Vision API (fallback)
+$env:VISION_AUDIO_MODE = "exhibition_rules"
+$env:SILENT_SIGNAL_COORDINATE_MODE = "front"
+$env:REAR_APPROACH_CAMERA_MODE = "front"
+.\.venv\Scripts\python.exe -m uvicorn api.vision_api:app --host 0.0.0.0 --port 8000
+
+# 독립 Streaming API (같은 머신에서 병행 가능)
+.\.venv\Scripts\python.exe -m uvicorn experiments.streaming_poc.streaming_api_poc.app:app --host 0.0.0.0 --port 8010
+```
+
+Streaming endpoint는 `POST /vision/start`, 반복 `POST /vision/frame`
+(`multipart/form-data` JPEG), `POST /vision/complete`,
+`GET /vision/status/{sessionId}`, `GET /vision/result/{sessionId}`입니다.
+Pi가 `sessionId`와 기존 `triggerId`를 연결하고, Silent Signal은 촬영 중
+`EARLY_EVENT` callback으로 별도 기록됩니다. 최종 결과는 Spring Boot가 polling
+후 같은 `triggerId`에 대해 한 번만 Agent 판단에 사용합니다.
+
+현재 7초 localhost 대표 검증 설정은 KEYPAD `960x540` JPEG Q85 30 FPS
+(Silent Signal/Rear Approach), AUDIO `1920x1080` JPEG Q85 30 FPS
+(Camera Occlusion/Person Dwell)입니다. 15/20 FPS는 `partial` 결과이므로
+최종 분석 운영 설정으로 확정되지 않았습니다. 실제 Raspberry Pi의 210프레임/7초
+전송 성능, Spring Boot 인증·네트워크 연동은 아직 검증 전입니다.
+
+연동 상세는 다음 문서를 참조합니다.
+
+- [Pi 및 Spring Boot 연동 가이드](experiments/streaming_poc/streaming_api_poc/PI_SPRING_BOOT_READINESS.md)
+- [Streaming JSON DTO/HTTP 명세](experiment_results/streaming_poc/streaming_api_poc/SPRING_BOOT_JSON_SPEC.md)
+- [Phase C FPS 검증](experiment_results/streaming_poc/streaming_api_poc/phase_c/PHASE_C_REPORT.md)
+- [Phase D localhost 통합 검증](experiment_results/streaming_poc/streaming_api_poc/phase_d/PHASE_D_REPORT.md)
+
 ## Git 관리
 
 원본·증강 영상, 실행 결과, 자동 생성 manifest, 모델 가중치는 `.gitignore`로 제외합니다. 코드와 재현에 필요한 설정 파일만 Git으로 관리합니다.

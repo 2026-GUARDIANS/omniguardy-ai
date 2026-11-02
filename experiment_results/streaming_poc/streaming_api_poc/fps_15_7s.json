@@ -1,0 +1,84 @@
+{
+  "fps": 15.0,
+  "sourceFramesIn7Seconds": 210,
+  "transmittedFrames": 105,
+  "acceptedFrames": 105,
+  "duplicateResponses": 0,
+  "conflict409": 0,
+  "queue429": 0,
+  "captureSeconds": 7.003,
+  "postCompleteDrainSeconds": 0.233,
+  "finalSeconds": 7.236,
+  "status": {
+    "sessionId": "fps-15-9ca58139",
+    "triggerId": "fps-test-15.0",
+    "securityEventId": null,
+    "triggerType": "KEYPAD",
+    "analysisState": "COMPLETED",
+    "inputComplete": true,
+    "nextExpectedFrameIndex": 105,
+    "queueDepth": 0,
+    "mediaPipeQueueMaxDepth": 1,
+    "yoloQueueMaxDepth": null,
+    "finalResultAvailable": true,
+    "earlyEventCount": 1,
+    "callbackAttempts": [
+      {
+        "messageType": "EARLY_EVENT",
+        "eventInstanceId": "fps-15-9ca58139-signal-001",
+        "attempt": 1,
+        "status": 204,
+        "error": null,
+        "at": "2026-11-02T14:00:11.807+09:00",
+        "elapsedMs": 42.474
+      }
+    ],
+    "error": null
+  },
+  "earlyEvent": {
+    "messageType": "EARLY_EVENT",
+    "sessionId": "fps-15-9ca58139",
+    "triggerId": "fps-test-15.0",
+    "securityEventId": null,
+    "triggerType": "KEYPAD",
+    "eventInstanceId": "fps-15-9ca58139-signal-001",
+    "sequence": 1,
+    "provisional": true,
+    "event": {
+      "eventType": "SILENT_SIGNAL",
+      "detectedFrame": 115,
+      "confirmedFrame": 115,
+      "capturedAt": "3.832822"
+    },
+    "emittedAt": "2026-11-02T14:00:11.765+09:00"
+  },
+  "captureStartToEarlyReceiverSeconds": 3.904,
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "fps-15-9ca58139",
+    "trigger": {
+      "triggerId": "fps-test-15.0",
+      "triggerType": "KEYPAD",
+      "securityEventId": null
+    },
+    "relatedEarlyEventInstanceIds": [
+      "fps-15-9ca58139-signal-001"
+    ],
+    "status": "success",
+    "result": {
+      "visionEvents": [
+        {
+          "eventType": "SILENT_SIGNAL",
+          "detectedFrame": 115,
+          "confirmedFrame": 115,
+          "capturedAt": "3.832822"
+        }
+      ],
+      "trackedPersonCount": null,
+      "streamingPocScope": "SILENT_SIGNAL only"
+    },
+    "error": null,
+    "emittedAt": "2026-11-02T14:00:15.138+09:00"
+  },
+  "scope": "KEYPAD Silent Signal only; no YOLO/Rear Approach queue in this PoC"
+}

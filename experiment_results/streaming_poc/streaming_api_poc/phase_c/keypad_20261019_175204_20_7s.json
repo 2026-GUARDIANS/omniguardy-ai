@@ -1,0 +1,95 @@
+{
+  "video": "final_demo\\videos\\03_keypad\\approach_signal\\20261019_175204.mp4",
+  "triggerType": "KEYPAD",
+  "fps": 20.0,
+  "resolution": [
+    960,
+    540
+  ],
+  "sourceFramesIn7Seconds": 210,
+  "transmittedFrames": 140,
+  "acceptedFrames": 140,
+  "duplicateResponses": 0,
+  "conflict409": 0,
+  "queue429": 0,
+  "captureSeconds": 7.008,
+  "postCompleteDrainSeconds": 0.174,
+  "finalSeconds": 7.182,
+  "status": {
+    "sessionId": "fps-20-a61378a1",
+    "triggerId": "fps-test-20.0",
+    "securityEventId": null,
+    "triggerType": "KEYPAD",
+    "analysisState": "COMPLETED",
+    "inputComplete": true,
+    "nextExpectedFrameIndex": 140,
+    "queueDepth": 0,
+    "mediaPipeQueueMaxDepth": 1,
+    "yoloQueueMaxDepth": 8,
+    "finalResultAvailable": true,
+    "earlyEventCount": 1,
+    "callbackAttempts": [
+      {
+        "messageType": "EARLY_EVENT",
+        "eventInstanceId": "fps-20-a61378a1-signal-001",
+        "attempt": 1,
+        "status": 204,
+        "error": null,
+        "at": "2026-11-02T14:39:00.116+09:00",
+        "elapsedMs": 2.484
+      }
+    ],
+    "error": null,
+    "analysisCompleteness": "PARTIAL_SAMPLED_TIME_AXIS",
+    "audioQueueMaxDepth": 0,
+    "trackingRecordCount": 191
+  },
+  "earlyEvent": {
+    "messageType": "EARLY_EVENT",
+    "sessionId": "fps-20-a61378a1",
+    "triggerId": "fps-test-20.0",
+    "securityEventId": null,
+    "triggerType": "KEYPAD",
+    "eventInstanceId": "fps-20-a61378a1-signal-001",
+    "sequence": 1,
+    "provisional": true,
+    "event": {
+      "eventType": "SILENT_SIGNAL",
+      "detectedFrame": 114,
+      "confirmedFrame": 114,
+      "capturedAt": "3.799464"
+    },
+    "emittedAt": "2026-11-02T14:39:00.113+09:00"
+  },
+  "captureStartToEarlyReceiverSeconds": 3.869,
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "fps-20-a61378a1",
+    "trigger": {
+      "triggerId": "fps-test-20.0",
+      "triggerType": "KEYPAD",
+      "securityEventId": null
+    },
+    "analysisState": "COMPLETED",
+    "analysisCompleteness": "PARTIAL_SAMPLED_TIME_AXIS",
+    "relatedEarlyEventInstanceIds": [
+      "fps-20-a61378a1-signal-001"
+    ],
+    "status": "partial",
+    "result": {
+      "visionEvents": [
+        {
+          "eventType": "SILENT_SIGNAL",
+          "detectedFrame": 114,
+          "confirmedFrame": 114,
+          "capturedAt": "3.799464"
+        }
+      ],
+      "trackedPersonCount": null,
+      "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+    },
+    "error": null,
+    "emittedAt": "2026-11-02T14:39:03.428+09:00"
+  },
+  "scope": "Streaming API Phase B; results depend on triggerType and contiguous source frames"
+}

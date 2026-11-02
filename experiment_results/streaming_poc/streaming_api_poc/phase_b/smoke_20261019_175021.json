@@ -1,0 +1,104 @@
+{
+  "video": "final_demo\\videos\\03_keypad\\approach_signal\\20261019_175021.mp4",
+  "sourceFrames": 389,
+  "received": [
+    {
+      "messageType": "EARLY_EVENT",
+      "sessionId": "smoke-175021",
+      "triggerId": "local-smoke",
+      "securityEventId": null,
+      "triggerType": "KEYPAD",
+      "eventInstanceId": "smoke-175021-signal-001",
+      "sequence": 1,
+      "provisional": true,
+      "event": {
+        "eventType": "SILENT_SIGNAL",
+        "detectedFrame": 335,
+        "confirmedFrame": 335,
+        "capturedAt": "11.157940"
+      },
+      "emittedAt": "2026-11-02T14:26:02.648+09:00"
+    },
+    {
+      "messageType": "FINAL_RESULT",
+      "sessionId": "smoke-175021",
+      "trigger": {
+        "triggerId": "local-smoke",
+        "triggerType": "KEYPAD",
+        "securityEventId": null
+      },
+      "analysisState": "COMPLETE_KEYPAD",
+      "relatedEarlyEventInstanceIds": [
+        "smoke-175021-signal-001"
+      ],
+      "status": "success",
+      "result": {
+        "visionEvents": [
+          {
+            "eventType": "SILENT_SIGNAL",
+            "detectedFrame": 335,
+            "confirmedFrame": 335,
+            "capturedAt": "11.157940"
+          },
+          {
+            "eventType": "REAR_CLOSE_APPROACH_SUSPECTED",
+            "confidence": 0.81,
+            "detectedFrame": 284,
+            "details": {
+              "personCount": 4,
+              "delayedEntrySeconds": 9.46,
+              "distanceClosingDetected": true,
+              "closeProximityDurationSeconds": 3.1,
+              "operatorSelection": "front_foreground_bbox"
+            }
+          }
+        ],
+        "trackedPersonCount": 4,
+        "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+      },
+      "error": null,
+      "emittedAt": "2026-11-02T14:26:05.268+09:00"
+    }
+  ],
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "smoke-175021",
+    "trigger": {
+      "triggerId": "local-smoke",
+      "triggerType": "KEYPAD",
+      "securityEventId": null
+    },
+    "analysisState": "COMPLETE_KEYPAD",
+    "relatedEarlyEventInstanceIds": [
+      "smoke-175021-signal-001"
+    ],
+    "status": "success",
+    "result": {
+      "visionEvents": [
+        {
+          "eventType": "SILENT_SIGNAL",
+          "detectedFrame": 335,
+          "confirmedFrame": 335,
+          "capturedAt": "11.157940"
+        },
+        {
+          "eventType": "REAR_CLOSE_APPROACH_SUSPECTED",
+          "confidence": 0.81,
+          "detectedFrame": 284,
+          "details": {
+            "personCount": 4,
+            "delayedEntrySeconds": 9.46,
+            "distanceClosingDetected": true,
+            "closeProximityDurationSeconds": 3.1,
+            "operatorSelection": "front_foreground_bbox"
+          }
+        }
+      ],
+      "trackedPersonCount": 4,
+      "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+    },
+    "error": null,
+    "emittedAt": "2026-11-02T14:26:05.348+09:00"
+  },
+  "elapsedSeconds": 19.7
+}

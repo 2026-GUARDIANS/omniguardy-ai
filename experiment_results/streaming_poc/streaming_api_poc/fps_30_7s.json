@@ -1,0 +1,100 @@
+{
+  "fps": 30.0,
+  "sourceFramesIn7Seconds": 210,
+  "transmittedFrames": 210,
+  "acceptedFrames": 210,
+  "duplicateResponses": 0,
+  "conflict409": 0,
+  "queue429": 0,
+  "captureSeconds": 6.994,
+  "postCompleteDrainSeconds": 2.078,
+  "finalSeconds": 9.071,
+  "status": {
+    "sessionId": "fps-30-3a6531ae",
+    "triggerId": "fps-test-30.0",
+    "securityEventId": null,
+    "triggerType": "KEYPAD",
+    "analysisState": "COMPLETED",
+    "inputComplete": true,
+    "nextExpectedFrameIndex": 210,
+    "queueDepth": 0,
+    "mediaPipeQueueMaxDepth": 15,
+    "yoloQueueMaxDepth": 50,
+    "finalResultAvailable": true,
+    "earlyEventCount": 1,
+    "callbackAttempts": [
+      {
+        "messageType": "EARLY_EVENT",
+        "eventInstanceId": "fps-30-3a6531ae-signal-001",
+        "attempt": 1,
+        "status": 204,
+        "error": null,
+        "at": "2026-11-02T14:24:23.128+09:00",
+        "elapsedMs": 3.989
+      }
+    ],
+    "error": null,
+    "analysisCompleteness": "COMPLETE_KEYPAD",
+    "audioQueueMaxDepth": 0,
+    "trackingRecordCount": 290
+  },
+  "earlyEvent": {
+    "messageType": "EARLY_EVENT",
+    "sessionId": "fps-30-3a6531ae",
+    "triggerId": "fps-test-30.0",
+    "securityEventId": null,
+    "triggerType": "KEYPAD",
+    "eventInstanceId": "fps-30-3a6531ae-signal-001",
+    "sequence": 1,
+    "provisional": true,
+    "event": {
+      "eventType": "SILENT_SIGNAL",
+      "detectedFrame": 114,
+      "confirmedFrame": 114,
+      "capturedAt": "3.799493"
+    },
+    "emittedAt": "2026-11-02T14:24:23.124+09:00"
+  },
+  "captureStartToEarlyReceiverSeconds": 4.127,
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "fps-30-3a6531ae",
+    "trigger": {
+      "triggerId": "fps-test-30.0",
+      "triggerType": "KEYPAD",
+      "securityEventId": null
+    },
+    "analysisState": "COMPLETE_KEYPAD",
+    "relatedEarlyEventInstanceIds": [
+      "fps-30-3a6531ae-signal-001"
+    ],
+    "status": "success",
+    "result": {
+      "visionEvents": [
+        {
+          "eventType": "SILENT_SIGNAL",
+          "detectedFrame": 114,
+          "confirmedFrame": 114,
+          "capturedAt": "3.799493"
+        },
+        {
+          "eventType": "REAR_CLOSE_APPROACH_SUSPECTED",
+          "confidence": 0.84,
+          "detectedFrame": 43,
+          "details": {
+            "personCount": 3,
+            "delayedEntrySeconds": 1.43,
+            "distanceClosingDetected": true,
+            "closeProximityDurationSeconds": 2.13,
+            "operatorSelection": "front_foreground_bbox"
+          }
+        }
+      ],
+      "trackedPersonCount": 3,
+      "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+    },
+    "error": null,
+    "emittedAt": "2026-11-02T14:24:28.070+09:00"
+  },
+  "scope": "KEYPAD Silent Signal only; no YOLO/Rear Approach queue in this PoC"
+}

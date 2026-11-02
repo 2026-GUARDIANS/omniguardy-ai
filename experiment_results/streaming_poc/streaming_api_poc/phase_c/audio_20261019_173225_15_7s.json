@@ -1,0 +1,60 @@
+{
+  "video": "final_demo\\videos\\01_camera_occlusion\\20261019_173225.mp4",
+  "triggerType": "AUDIO",
+  "fps": 15.0,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "sourceFramesIn7Seconds": 210,
+  "transmittedFrames": 105,
+  "acceptedFrames": 105,
+  "duplicateResponses": 0,
+  "conflict409": 0,
+  "queue429": 0,
+  "captureSeconds": 7.006,
+  "postCompleteDrainSeconds": 2.489,
+  "finalSeconds": 9.495,
+  "status": {
+    "sessionId": "fps-15-eca8cfce",
+    "triggerId": "fps-test-15.0",
+    "securityEventId": "local-audio-fps-15-eca8cfce",
+    "triggerType": "AUDIO",
+    "analysisState": "COMPLETED",
+    "inputComplete": true,
+    "nextExpectedFrameIndex": 105,
+    "queueDepth": 0,
+    "mediaPipeQueueMaxDepth": 1,
+    "yoloQueueMaxDepth": 28,
+    "finalResultAvailable": true,
+    "earlyEventCount": 0,
+    "callbackAttempts": [],
+    "error": null,
+    "analysisCompleteness": "PARTIAL_SAMPLED_TIME_AXIS",
+    "audioQueueMaxDepth": 1,
+    "trackingRecordCount": 69
+  },
+  "earlyEvent": null,
+  "captureStartToEarlyReceiverSeconds": null,
+  "final": {
+    "messageType": "FINAL_RESULT",
+    "sessionId": "fps-15-eca8cfce",
+    "trigger": {
+      "triggerId": "fps-test-15.0",
+      "triggerType": "AUDIO",
+      "securityEventId": "local-audio-fps-15-eca8cfce"
+    },
+    "analysisState": "COMPLETED",
+    "analysisCompleteness": "PARTIAL_SAMPLED_TIME_AXIS",
+    "relatedEarlyEventInstanceIds": [],
+    "status": "partial",
+    "result": {
+      "visionEvents": [],
+      "trackedPersonCount": null,
+      "streamingPocScope": "KEYPAD Silent+Rear or AUDIO Occlusion+Dwell when COMPLETE"
+    },
+    "error": null,
+    "emittedAt": "2026-11-02T14:39:16.552+09:00"
+  },
+  "scope": "Streaming API Phase B; results depend on triggerType and contiguous source frames"
+}
