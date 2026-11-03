@@ -36,6 +36,7 @@ app = FastAPI(title="OmniGuardy Streaming Silent Signal PoC", version="0.1")
 END = object()
 ALLOWED_CALLBACK_HOSTS = {x.strip() for x in os.getenv("STREAMING_POC_CALLBACK_HOSTS", "127.0.0.1,localhost").split(",") if x.strip()}
 CALLBACK_BEARER_TOKEN = os.getenv("STREAMING_POC_CALLBACK_BEARER_TOKEN")
+CALLBACK_KEY = os.getenv("STREAMING_POC_CALLBACK_KEY")
 QUEUE_CAPACITY = max(1, int(os.getenv("STREAMING_POC_QUEUE_CAPACITY", "300")))
 COMPLETED_SESSION_TTL_SECONDS = max(1.0, float(os.getenv("STREAMING_POC_COMPLETED_SESSION_TTL_SECONDS", "3600")))
 
@@ -110,15 +111,30 @@ class Session:
 
     def _callback(self, payload: dict[str, Any]) -> None:
         if not self.callback_url: return
+        # Spring Boot requires the callback key. Keep localhost/legacy Bearer
+        # callbacks usable, but do not send an unauthenticated request to the
+        # production Spring Boot host when its required key is absent.
+        callback_host = urllib.parse.urlparse(self.callback_url).hostname
+        if callback_host == "api.omniguardy.cloud" and not CALLBACK_KEY:
+            with self.lock:
+                self.callback_records.append({"messageType": payload["messageType"], "eventInstanceId": payload.get("eventInstanceId"), "attempt": 0, "status": None, "error": "callback authentication is not configured: STREAMING_POC_CALLBACK_KEY is required for api.omniguardy.cloud", "at": now_iso(), "elapsedMs": 0.0})
+            return
         for attempt in (1, 2):
             started = time.perf_counter(); status = None; error = None
             try:
                 headers = {"Content-Type": "application/json"}
                 if CALLBACK_BEARER_TOKEN: headers["Authorization"] = f"Bearer {CALLBACK_BEARER_TOKEN}"
+                if CALLBACK_KEY: headers["X-Vision-Callback-Key"] = CALLBACK_KEY
                 req = urllib.request.Request(self.callback_url, data=json.dumps(payload).encode(), headers=headers, method="POST")
                 with urllib.request.urlopen(req, timeout=2) as response: status = response.status
-            except urllib.error.HTTPError as exc: status, error = exc.code, repr(exc)
-            except Exception as exc: error = repr(exc)
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+                error = (f"callback authentication rejected (HTTP {status}; credentials redacted)"
+                         if status in {401, 403} else f"callback returned HTTP {status}")
+            except Exception as exc:
+                # Exception text can include request headers on malformed
+                # credentials, so never retain it in a status/log record.
+                error = f"callback transport error ({type(exc).__name__}; credentials redacted)"
             with self.lock: self.callback_records.append({"messageType": payload["messageType"], "eventInstanceId": payload.get("eventInstanceId"), "attempt": attempt, "status": status, "error": error, "at": now_iso(), "elapsedMs": round((time.perf_counter()-started)*1000,3)})
             if status and 200 <= status < 300: return
             time.sleep(.05)

@@ -13,10 +13,15 @@ ROOT=Path(__file__).resolve().parents[3]
 VIDEO=ROOT/'final_demo/videos/03_keypad/approach_signal/20261019_175204.mp4'
 
 class Callback(BaseHTTPRequestHandler):
-    records=[]; fail_first=True
+    records=[]; fail_first=True; expected_callback_key=None
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        Callback.records.append({'receivedPerf':time.perf_counter(),'payload':body})
+        # Retain only a boolean so generated result files cannot expose a key.
+        received_key=self.headers.get('X-Vision-Callback-Key')
+        Callback.records.append({'receivedPerf':time.perf_counter(),'payload':body,
+                                 'hasVisionCallbackKey': bool(received_key),
+                                 'visionCallbackKeyMatchesEnvironment': received_key == Callback.expected_callback_key,
+                                 'contentTypeIsJson': self.headers.get_content_type() == 'application/json'})
         if Callback.fail_first:
             Callback.fail_first=False; self.send_response(500)
         else: self.send_response(204)
@@ -39,7 +44,10 @@ def wait_result(base,sid,limit=45):
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--base',default='http://127.0.0.1:8010'); ap.add_argument('--output-dir',type=Path,default=ROOT/'experiment_results/streaming_poc/streaming_api_poc/phase_d'); args=ap.parse_args()
-    Callback.records=[]; Callback.fail_first=True
+    expected_callback_key=__import__('os').environ.get('STREAMING_POC_CALLBACK_KEY')
+    if not expected_callback_key:
+        raise RuntimeError('STREAMING_POC_CALLBACK_KEY must be set for this callback authentication smoke test')
+    Callback.records=[]; Callback.fail_first=True; Callback.expected_callback_key=expected_callback_key
     receiver=ThreadingHTTPServer(('127.0.0.1',0),Callback); threading.Thread(target=receiver.serve_forever,daemon=True).start()
     base=args.base; tiny_ok,tiny=cv2.imencode('.jpg',np.zeros((8,8,3),np.uint8)); assert tiny_ok
     probe=f'contract-probe-{uuid.uuid4().hex[:8]}'; main_id=f'contract-main-{uuid.uuid4().hex[:8]}'
@@ -77,9 +85,21 @@ def main():
     result_events=main_first['result']['visionEvents']; early_ids=main_first['relatedEarlyEventInstanceIds']
     checks['main_result_idempotent']=main_first==main_second
     checks['callback_attempt_count']=len(Callback.records)
+    checks['callback_key_present_on_every_attempt']=bool(Callback.records) and all(x['hasVisionCallbackKey'] for x in Callback.records)
+    checks['callback_key_matches_environment_on_every_attempt']=bool(Callback.records) and all(x['visionCallbackKeyMatchesEnvironment'] for x in Callback.records)
+    checks['callback_content_type_json_on_every_attempt']=bool(Callback.records) and all(x['contentTypeIsJson'] for x in Callback.records)
     checks['callback_retry_same_instance']=len(early)>=2 and early[0]['payload']['eventInstanceId']==early[1]['payload']['eventInstanceId'] and early[0]['payload']['sequence']==early[1]['payload']['sequence']
+    required_early={'sessionId':str,'triggerId':str,'securityEventId':type(None),'triggerType':str,'eventInstanceId':str,'sequence':int,'provisional':bool,'event':dict,'emittedAt':str}
+    checks['early_event_contract_types']=bool(early) and all(isinstance(early[-1]['payload'].get(name),kind) for name,kind in required_early.items())
+    checks['callback_204_processed']=any(x.get('status') == 204 for x in main_status['callbackAttempts'])
     checks['early_in_final']=bool(early) and any(e.get('eventType')=='SILENT_SIGNAL' and e.get('detectedFrame')==early[-1]['payload']['event']['detectedFrame'] for e in result_events) and early[-1]['payload']['eventInstanceId'] in early_ids
-    out={'scope':'localhost mock only; no Pi, Spring Boot, or port-8000 API','checks':checks,'main':{'framesSent':sent,'captureSeconds':round(capture_end-started,3),'postCompleteDrainSeconds':round(finished-capture_end,3),'finalSeconds':round(finished-started,3),'status':main_status,'final':main_first,'callbackRecords':Callback.records},'probe':{'status':probe_status,'final':probe_first}}
-    args.output_dir.mkdir(parents=True,exist_ok=True); path=args.output_dir/'integration_contract_smoke.json'; path.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf8'); print(json.dumps(out,ensure_ascii=False)); receiver.shutdown(); receiver.server_close()
+    out={'scope':'localhost mock only; no Pi, Spring Boot, or port-8000 API; callback key values are intentionally excluded','checks':checks,'main':{'framesSent':sent,'captureSeconds':round(capture_end-started,3),'postCompleteDrainSeconds':round(finished-capture_end,3),'finalSeconds':round(finished-started,3),'status':main_status,'final':main_first,'callbackRecords':Callback.records},'probe':{'status':probe_status,'final':probe_first}}
+    # First render contains only safe header-presence/match booleans.  Check
+    # the actual value before producing the final persisted result.
+    checks['callback_key_absent_from_result']=expected_callback_key not in json.dumps(out,ensure_ascii=False)
+    if not checks['callback_key_absent_from_result']:
+        raise RuntimeError('callback key would be exposed in test output')
+    rendered=json.dumps(out,ensure_ascii=False,indent=2)
+    args.output_dir.mkdir(parents=True,exist_ok=True); path=args.output_dir/'integration_contract_smoke.json'; path.write_text(rendered,encoding='utf8'); print(rendered); receiver.shutdown(); receiver.server_close()
 
 if __name__=='__main__': main()

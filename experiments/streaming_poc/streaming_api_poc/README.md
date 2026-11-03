@@ -45,6 +45,7 @@ localhost 결과이며 Pi의 실제 210프레임/7초 전송 성능을 보장하
 |---|---|---|
 | `STREAMING_POC_CALLBACK_HOSTS` | `127.0.0.1,localhost` | callback URL host allowlist |
 | `STREAMING_POC_CALLBACK_BEARER_TOKEN` | unset | Vision 서버가 callback에 넣는 Bearer token |
+| `STREAMING_POC_CALLBACK_KEY` | unset | Spring Boot callback의 `X-Vision-Callback-Key`; `api.omniguardy.cloud` callback에는 필수 |
 | `STREAMING_POC_QUEUE_CAPACITY` | `300` | worker별 frame queue 제한 |
 | `STREAMING_POC_COMPLETED_SESSION_TTL_SECONDS` | `3600` | 완료 결과 보관 시간 |
 
