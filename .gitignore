@@ -1,35 +1,62 @@
-# Python 가상환경
+# Python virtual environments
 venv/
 env/
 .venv/
 
-# Python 캐시
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+build/
+dist/
 
-# 모델 파일 (핵심 - 용량 큼). 런타임 config만 Git으로 관리합니다.
+# Trained models
 models/*
 !models/*.config.json
 *.keras
 *.h5
 
-# Jupyter Notebook
+# Jupyter
 .ipynb_checkpoints/
 
-# 캐시 파일
+# Cache
 .cache/
 *.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# OS 파일
-.DS_Store
-Thumbs.db
+# Environment variables
+.env
+.env.*
+!.env.example
 
-# logs (선택)
+# Test and coverage reports
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Benchmark and experiment outputs
+results/
+benchmark_results/
+benchmark_outputs/
+*.prof
+*.pstats
+
+# Logs
 logs/
 *.log
 
-# 원본 오디오 데이터와 실험 산출물
+# Local datasets
 data/
-results/
+ESC-50/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
